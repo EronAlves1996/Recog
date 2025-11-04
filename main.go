@@ -16,6 +16,8 @@ type Return struct {
 	Hash string
 }
 
+var internalServerError = errors.New("internal server error")
+
 func main() {
 	router := gin.Default()
 	logger, _ := zap.NewProduction()
@@ -37,14 +39,14 @@ func main() {
 		file, err := c.FormFile("file")
 		if err != nil {
 			l.Errorw("Error while opening the file", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errors.New("internal server error"))
+			c.AbortWithError(http.StatusInternalServerError, internalServerError)
 			return
 		}
 
 		openedFile, err := file.Open()
 		if err != nil {
 			l.Errorw("Error while opening the file", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errors.New("internal server error"))
+			c.AbortWithError(http.StatusInternalServerError, internalServerError)
 			return
 		}
 
@@ -60,7 +62,7 @@ func main() {
 
 			if err != nil {
 				l.Errorw("Error while reading the file", zap.Error(err))
-				c.AbortWithError(http.StatusInternalServerError, errors.New("internal server error"))
+				c.AbortWithError(http.StatusInternalServerError, internalServerError)
 				return
 			}
 
