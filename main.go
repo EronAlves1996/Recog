@@ -34,7 +34,7 @@ func main() {
 		h := c.Request.Header.Get("Content-Type")
 
 		if h == "" {
-			c.AbortWithError(400, errors.New("Content-Type header is required"))
+			c.AbortWithError(http.StatusBadRequest, errors.New("Content-Type header is required"))
 			return
 		}
 
