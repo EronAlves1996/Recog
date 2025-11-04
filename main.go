@@ -59,7 +59,11 @@ func main() {
 		defer openedFile.Close()
 
 		hasher := crypto.SHA256.New()
-		io.Copy(hasher, openedFile)
+		if _, err = io.Copy(hasher, openedFile); err != nil {
+			l.Errorw("Error while reading file contents", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			return
+		}
 
 		hashed := hasher.Sum(nil)
 		hashString := hex.EncodeToString(hashed)
