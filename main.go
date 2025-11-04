@@ -4,7 +4,9 @@ import (
 	"crypto"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -16,13 +18,18 @@ type Return struct {
 	Hash string
 }
 
-var internalServerError = errors.New("internal server error")
+var errInternalServerError = errors.New("internal server error")
 
 func main() {
 	router := gin.Default()
-	logger, _ := zap.NewProduction()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to create logger: %w", err))
+	}
 
 	l := logger.Sugar()
+	router.MaxMultipartMemory = 8 << 20
+
 	router.POST("/file/hash", func(c *gin.Context) {
 		h := c.Request.Header.Get("Content-Type")
 
@@ -39,35 +46,20 @@ func main() {
 		file, err := c.FormFile("file")
 		if err != nil {
 			l.Errorw("Error while opening the file", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, internalServerError)
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
 			return
 		}
 
 		openedFile, err := file.Open()
 		if err != nil {
 			l.Errorw("Error while opening the file", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, internalServerError)
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
 			return
 		}
+		defer openedFile.Close()
 
-		b := make([]byte, 512)
 		hasher := crypto.SHA256.New()
-
-		for {
-			n, err := openedFile.Read(b)
-
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			if err != nil {
-				l.Errorw("Error while reading the file", zap.Error(err))
-				c.AbortWithError(http.StatusInternalServerError, internalServerError)
-				return
-			}
-
-			hasher.Write(b[:n])
-		}
+		io.Copy(hasher, openedFile)
 
 		hashed := hasher.Sum(nil)
 		hashString := hex.EncodeToString(hashed)
