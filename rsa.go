@@ -7,6 +7,24 @@ import (
 	"errors"
 )
 
+type RsaPair struct {
+	privateKey *rsa.PrivateKey
+	publicKey  *rsa.PublicKey
+}
+
+func ParseRsaPair(encodedPublicKey string) (*RsaPair, error) {
+	privateKey, err := ParseRsaPrivateKey(encodedPublicKey)
+	if err != nil {
+		return nil, err
+	}
+	r := &RsaPair{
+		privateKey: privateKey,
+		publicKey:  &privateKey.PublicKey,
+	}
+
+	return r, nil
+}
+
 func ParseRsaPrivateKey(encodedPublicKey string) (*rsa.PrivateKey, error) {
 	decoded, err := base64.StdEncoding.DecodeString(encodedPublicKey)
 	if err != nil {

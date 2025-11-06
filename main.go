@@ -25,9 +25,9 @@ func main() {
 	if err != nil {
 		log.Fatal(fmt.Errorf("unable to load app config: %w", err))
 	}
-	rsaPrivateKey, err := ParseRsaPrivateKey(config.RawRsaPrivateKey)
+	rsaPair, err := ParseRsaPair(config.RawRsaPrivateKey)
 	if err != nil {
-		log.Fatal(fmt.Errorf("unable to parse private key: %w", err))
+		log.Fatal(fmt.Errorf("unable to parse rsa pair: %w", err))
 	}
 
 	router := gin.Default()
