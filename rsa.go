@@ -13,8 +13,8 @@ type RsaPair struct {
 	publicKey  *rsa.PublicKey
 }
 
-func ParseRsaPair(encodedPublicKey string) (*RsaPair, error) {
-	privateKey, err := ParseRsaPrivateKey(encodedPublicKey)
+func ParseRsaPair(encodedPrivateKey string) (*RsaPair, error) {
+	privateKey, err := ParseRsaPrivateKey(encodedPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse rsa private key: %w", err)
 	}
@@ -26,8 +26,8 @@ func ParseRsaPair(encodedPublicKey string) (*RsaPair, error) {
 	return r, nil
 }
 
-func ParseRsaPrivateKey(encodedPublicKey string) (*rsa.PrivateKey, error) {
-	decoded, err := base64.StdEncoding.DecodeString(encodedPublicKey)
+func ParseRsaPrivateKey(encodedPrivateKey string) (*rsa.PrivateKey, error) {
+	decoded, err := base64.StdEncoding.DecodeString(encodedPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("unable to decode base64 string: %w", err)
 	}

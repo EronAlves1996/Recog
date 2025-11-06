@@ -56,11 +56,11 @@ func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.
 		hash := hasher.Sum(nil)
 
 		if err := rsa.VerifyPSS(rsaPair.publicKey, crypto.SHA256, hash, decoded, nil); err != nil {
-			c.JSON(http.StatusOK, gin.H{"valid": "false"})
+			c.JSON(http.StatusOK, gin.H{"valid": false})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"valid": "true"})
+		c.JSON(http.StatusOK, gin.H{"valid": true})
 	}
 }
 
