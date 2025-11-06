@@ -21,6 +21,10 @@ type Return struct {
 var errInternalServerError = errors.New("internal server error")
 
 func main() {
+	config, err := LoadConfig()
+	if err != nil {
+		log.Fatalf(fmt.Errorf("unable to load app config: %w", err))
+	}
 	router := gin.Default()
 	logger, err := zap.NewProduction()
 	if err != nil {
