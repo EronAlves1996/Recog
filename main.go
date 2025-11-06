@@ -9,10 +9,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type Return struct {
-	Hash string
-}
-
 var errInternalServerError = errors.New("internal server error")
 
 func main() {
@@ -33,7 +29,7 @@ func main() {
 
 	l := logger.Sugar()
 	router.MaxMultipartMemory = 8 << 20
-	registerRoutes(l, router)
+	registerRoutes(l, rsaPair, router)
 
 	l.Info("Listening on 8080")
 	router.Run()

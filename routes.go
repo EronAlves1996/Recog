@@ -2,6 +2,9 @@ package main
 
 import (
 	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -12,8 +15,45 @@ import (
 	"go.uber.org/zap"
 )
 
-func registerRoutes(l *zap.SugaredLogger, router *gin.Engine) {
+type SignMessageRequest struct {
+	Message string `json:"message" binding:"required" validate:"min=1"`
+}
+
+func registerRoutes(l *zap.SugaredLogger, rsaPair *RsaPair, router *gin.Engine) {
 	router.POST("/file/hash", hashFile(l))
+	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, rsaPair))
+}
+
+func signMessage(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		message, ok := c.MustGet(gin.BindKey).(*SignMessageRequest)
+		if !ok {
+			l.Errorw("Unable to desserialize message request struct")
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+
+			return
+		}
+
+		sha256 := crypto.SHA256.New()
+		if _, err := sha256.Write([]byte(message.Message)); err != nil {
+			l.Errorw("Unable to hash the message", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+
+			return
+		}
+
+		digest := sha256.Sum(nil)
+
+		signature, err := rsa.SignPSS(rand.Reader, rsaPair.privateKey, crypto.SHA256, digest, nil)
+		if err != nil {
+			l.Errorw("Unable to sign the hash", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"signature": base64.StdEncoding.EncodeToString(signature)})
+	}
 }
 
 func hashFile(l *zap.SugaredLogger) func(c *gin.Context) {
@@ -55,10 +95,6 @@ func hashFile(l *zap.SugaredLogger) func(c *gin.Context) {
 		hashed := hasher.Sum(nil)
 		hashString := hex.EncodeToString(hashed)
 
-		ret := Return{
-			Hash: hashString,
-		}
-
-		c.JSON(http.StatusOK, ret)
+		c.JSON(http.StatusOK, gin.H{"hash": hashString})
 	}
 }
