@@ -19,18 +19,56 @@ type SignMessageRequest struct {
 	Message string `json:"message" binding:"required" validate:"min=1"`
 }
 
+type VerifyMessageSignatureRequest struct {
+	SignMessageRequest
+	Signature string `json:"signature" binding:"required" validate:"min=1"`
+}
+
 func registerRoutes(l *zap.SugaredLogger, rsaPair *RsaPair, router *gin.Engine) {
 	router.POST("/file/hash", hashFile(l))
 	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, rsaPair))
+	router.POST("/verify", gin.Bind(VerifyMessageSignatureRequest{}), verifyMessageSignature(l, rsaPair))
+}
+
+func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		message, ok := c.MustGet(gin.BindKey).(*VerifyMessageSignatureRequest)
+		if !ok {
+			abortFailedToDesserialize(l, c)
+			return
+		}
+
+		m, signature := message.Message, message.Signature
+		decoded, err := base64.StdEncoding.DecodeString(signature)
+		if err != nil {
+			l.Errorw("Failed to decode base64 signature", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			return
+		}
+
+		hasher := crypto.SHA256.New()
+		if _, err := hasher.Write([]byte(m)); err != nil {
+			l.Errorw("Unable to hash the message", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+
+			return
+		}
+		hash := hasher.Sum(nil)
+
+		if err := rsa.VerifyPSS(rsaPair.publicKey, crypto.SHA256, hash, decoded, nil); err != nil {
+			c.JSON(http.StatusOK, gin.H{"valid": "false"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"valid": "true"})
+	}
 }
 
 func signMessage(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*SignMessageRequest)
 		if !ok {
-			l.Errorw("Unable to desserialize message request struct")
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
-
+			abortFailedToDesserialize(l, c)
 			return
 		}
 
@@ -54,6 +92,11 @@ func signMessage(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.Context) {
 
 		c.JSON(http.StatusOK, gin.H{"signature": base64.StdEncoding.EncodeToString(signature)})
 	}
+}
+
+func abortFailedToDesserialize(l *zap.SugaredLogger, c *gin.Context) {
+	l.Errorw("Unable to desserialize message request struct")
+	c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
 }
 
 func hashFile(l *zap.SugaredLogger) func(c *gin.Context) {
