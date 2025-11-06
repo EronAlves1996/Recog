@@ -23,8 +23,13 @@ var errInternalServerError = errors.New("internal server error")
 func main() {
 	config, err := LoadConfig()
 	if err != nil {
-		log.Fatalf(fmt.Errorf("unable to load app config: %w", err))
+		log.Fatal(fmt.Errorf("unable to load app config: %w", err))
 	}
+	rsaPrivateKey, err := ParseRsaPrivateKey(config.RawRsaPrivateKey)
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to parse private key: %w", err))
+	}
+
 	router := gin.Default()
 	logger, err := zap.NewProduction()
 	if err != nil {
