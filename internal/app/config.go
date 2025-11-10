@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"os"
@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	RawRsaPrivateKey string
+	EcP256PrivateKey string
 }
 
 func LoadConfig() (*Config, error) {
@@ -22,6 +23,7 @@ func LoadConfig() (*Config, error) {
 
 	c := Config{
 		RawRsaPrivateKey: os.Getenv("RSA_PRIVATE_KEY"),
+		EcP256PrivateKey: os.Getenv("EC_P256_PRIVATE_KEY"),
 	}
 
 	return &c, nil
