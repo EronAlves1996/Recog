@@ -39,8 +39,9 @@ func Run() {
 
 	signMessageAction := signature.NewSignBytesRsaAction(rsaPair, l)
 	initiateExchangeAction := exchange.NewInitiateExchangeAction(l, ecdhPrivateKey, signMessageAction)
+	completeExchangeAction := exchange.NewCompleteExchangeAction(ecdhPrivateKey)
 
-	registerRoutes(l, rsaPair, router, initiateExchangeAction, signMessageAction)
+	registerRoutes(l, rsaPair, router, initiateExchangeAction, signMessageAction, completeExchangeAction)
 
 	l.Info("Listening on 8080")
 	router.Run()

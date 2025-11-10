@@ -27,15 +27,41 @@ type VerifyMessageSignatureRequest struct {
 	Signature string `json:"signature" binding:"required" validate:"min=1"`
 }
 
+type ClientSecretRequest struct {
+	ClientPublicKey string `json:"clientPublicKey" binding:"required" validate:"min=1"`
+}
+
 func registerRoutes(l *zap.SugaredLogger,
 	rsaPair *cryptoutils.RsaPair,
 	router *gin.Engine,
 	action base.Action[base.Void, exchange.InitiateExchangeActionReturn],
-	signMessageAction base.Action[io.Reader, []byte]) {
+	signMessageAction base.Action[io.Reader, []byte],
+	completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn]) {
 	router.POST("/file/hash", hashFile(l))
 	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, signMessageAction))
 	router.POST("/verify", gin.Bind(VerifyMessageSignatureRequest{}), verifyMessageSignature(l, rsaPair))
 	router.POST("/exchange/initiate", initiateExchange(l, action))
+	router.POST("/exchange/complete", gin.Bind(ClientSecretRequest{}), completeExchange(l, completeExchangeAction))
+}
+
+func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn]) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		message, ok := c.MustGet(gin.BindKey).(*ClientSecretRequest)
+		if !ok {
+			abortFailedToDesserialize(l, c)
+			return
+		}
+
+		ret, err := completeExchangeAction.Execute(&message.ClientPublicKey)
+		if err != nil {
+			l.Errorw("failed to execute action", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, err)
+
+			return
+		}
+
+		c.JSON(http.StatusOK, ret)
+	}
 }
 
 func initiateExchange(l *zap.SugaredLogger, action base.Action[base.Void, exchange.InitiateExchangeActionReturn]) gin.HandlerFunc {
