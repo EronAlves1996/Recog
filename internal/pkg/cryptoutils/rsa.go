@@ -1,4 +1,4 @@
-package app
+package cryptoutils
 
 import (
 	"crypto/rsa"
@@ -9,8 +9,8 @@ import (
 )
 
 type RsaPair struct {
-	privateKey *rsa.PrivateKey
-	publicKey  *rsa.PublicKey
+	PrivateKey *rsa.PrivateKey
+	PublicKey  *rsa.PublicKey
 }
 
 func ParseRsaPair(encodedPrivateKey string) (*RsaPair, error) {
@@ -19,8 +19,8 @@ func ParseRsaPair(encodedPrivateKey string) (*RsaPair, error) {
 		return nil, fmt.Errorf("unable to parse rsa private key: %w", err)
 	}
 	r := &RsaPair{
-		privateKey: privateKey,
-		publicKey:  &privateKey.PublicKey,
+		PrivateKey: privateKey,
+		PublicKey:  &privateKey.PublicKey,
 	}
 
 	return r, nil

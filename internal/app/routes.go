@@ -1,8 +1,8 @@
 package app
 
 import (
+	"bytes"
 	"crypto"
-	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/hex"
@@ -11,6 +11,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/EronAlves1996/Recog/internal/app/base"
+	"github.com/EronAlves1996/Recog/internal/app/exchange"
+	"github.com/EronAlves1996/Recog/internal/pkg/cryptoutils"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -24,13 +27,31 @@ type VerifyMessageSignatureRequest struct {
 	Signature string `json:"signature" binding:"required" validate:"min=1"`
 }
 
-func registerRoutes(l *zap.SugaredLogger, rsaPair *RsaPair, router *gin.Engine) {
+func registerRoutes(l *zap.SugaredLogger,
+	rsaPair *cryptoutils.RsaPair,
+	router *gin.Engine,
+	action base.Action[base.Void, exchange.InitiateExchangeActionReturn],
+	signMessageAction base.Action[io.Reader, []byte]) {
 	router.POST("/file/hash", hashFile(l))
-	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, rsaPair))
+	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, signMessageAction))
 	router.POST("/verify", gin.Bind(VerifyMessageSignatureRequest{}), verifyMessageSignature(l, rsaPair))
+	router.POST("/exchange/initiate", initiateExchange(l, action))
 }
 
-func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.Context) {
+func initiateExchange(l *zap.SugaredLogger, action base.Action[base.Void, exchange.InitiateExchangeActionReturn]) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ret, err := action.Execute(nil)
+		if err != nil {
+			l.Errorw("failed to execute action", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			return
+		}
+
+		c.JSON(http.StatusOK, ret)
+	}
+}
+
+func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *cryptoutils.RsaPair) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*VerifyMessageSignatureRequest)
 		if !ok {
@@ -55,7 +76,7 @@ func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.
 		}
 		hash := hasher.Sum(nil)
 
-		if err := rsa.VerifyPSS(rsaPair.publicKey, crypto.SHA256, hash, decoded, nil); err != nil {
+		if err := rsa.VerifyPSS(rsaPair.PublicKey, crypto.SHA256, hash, decoded, nil); err != nil {
 			c.JSON(http.StatusOK, gin.H{"valid": false})
 			return
 		}
@@ -64,7 +85,7 @@ func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.
 	}
 }
 
-func signMessage(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.Context) {
+func signMessage(l *zap.SugaredLogger, action base.Action[io.Reader, []byte]) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*SignMessageRequest)
 		if !ok {
@@ -72,25 +93,19 @@ func signMessage(l *zap.SugaredLogger, rsaPair *RsaPair) func(c *gin.Context) {
 			return
 		}
 
-		sha256 := crypto.SHA256.New()
-		if _, err := sha256.Write([]byte(message.Message)); err != nil {
-			l.Errorw("Unable to hash the message", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+		buf := new(bytes.Buffer)
+		buf.WriteString(message.Message)
+		var reader io.Reader = buf
 
-			return
-		}
-
-		digest := sha256.Sum(nil)
-
-		signature, err := rsa.SignPSS(rand.Reader, rsaPair.privateKey, crypto.SHA256, digest, nil)
+		signature, err := action.Execute(&reader)
 		if err != nil {
-			l.Errorw("Unable to sign the hash", zap.Error(err))
+			l.Errorw("Unable to generate signature", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
 
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"signature": base64.StdEncoding.EncodeToString(signature)})
+		c.JSON(http.StatusOK, gin.H{"signature": base64.StdEncoding.EncodeToString(*signature)})
 	}
 }
 
