@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -22,9 +23,16 @@ type SignMessageRequest struct {
 	Message string `json:"message" binding:"required" validate:"min=1"`
 }
 
+type RawJSONObject []byte
+
+func (r *RawJSONObject) UnmarshalJSON(data []byte) error {
+	*r = data
+	return nil
+}
+
 type VerifyMessageSignatureRequest struct {
-	SignMessageRequest
-	Signature string `json:"signature" binding:"required" validate:"min=1"`
+	Message   RawJSONObject `json:"message" binding:"required"`
+	Signature string        `json:"signature" binding:"required" validate:"min=1"`
 }
 
 type ClientSecretRequest struct {
@@ -119,8 +127,16 @@ func signMessage(l *zap.SugaredLogger, action base.Action[io.Reader, []byte]) fu
 			return
 		}
 
+		marshaled, err := json.Marshal(message.Message)
+		if err != nil {
+			l.Errorw("failed to marshal the message", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+
+			return
+		}
+
 		buf := new(bytes.Buffer)
-		buf.WriteString(message.Message)
+		buf.Write(marshaled)
 		var reader io.Reader = buf
 
 		signature, err := action.Execute(&reader)

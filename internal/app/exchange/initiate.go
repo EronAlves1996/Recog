@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto/ecdh"
 	"encoding/base64"
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -49,7 +49,7 @@ func (i *InitiateExchangeAction) Execute(value *base.Void) (*InitiateExchangeAct
 	}
 
 	buf := new(bytes.Buffer)
-	if err := gob.NewEncoder(buf).Encode(payload); err != nil {
+	if err := json.NewEncoder(buf).Encode(payload); err != nil {
 		return nil, fmt.Errorf("unable to encode payload into bytes: %w", err)
 	}
 
