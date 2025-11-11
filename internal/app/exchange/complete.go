@@ -4,9 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
-	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -32,17 +30,7 @@ func (c *CompleteExchangeAction) Execute(clientKey *string) (*CompleteExchangeAc
 		return nil, fmt.Errorf("unable to decoded the base64 client key: %w", err)
 	}
 
-	probableKey, err := x509.ParsePKIXPublicKey(decoded)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse key in pkix format: %w", err)
-	}
-
-	ecdsaPublicKey, ok := probableKey.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("unable to interpret the parsed key as ecdsa public key")
-	}
-
-	publicKey, err := ecdsaPublicKey.ECDH()
+	publicKey, err := ecdh.P256().NewPublicKey(decoded)
 	if err != nil {
 		return nil, fmt.Errorf("unable to convert ecdsa public key to ecdh public key")
 	}
