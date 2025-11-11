@@ -48,12 +48,16 @@ func (i *InitiateExchangeAction) Execute(value *base.Void) (*InitiateExchangeAct
 		Curve: "P-256",
 	}
 
-	buf := new(bytes.Buffer)
-	if err := json.NewEncoder(buf).Encode(payload); err != nil {
-		return nil, fmt.Errorf("unable to encode payload into bytes: %w", err)
+	var buf bytes.Buffer
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal json")
 	}
 
-	var reader io.Reader = buf
+	buf.Write(encoded)
+
+	var reader io.Reader = &buf
 	signature, err := i.signMessageAction.Execute(&reader)
 
 	if err != nil {
