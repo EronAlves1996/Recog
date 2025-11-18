@@ -2,6 +2,7 @@ package exchange
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdh"
 	"encoding/base64"
 	"encoding/json"
@@ -39,7 +40,7 @@ type InitiateExchangeActionReturn struct {
 	Signature string
 }
 
-func (i *InitiateExchangeAction) Execute(value *base.Void) (*InitiateExchangeActionReturn, error) {
+func (i *InitiateExchangeAction) Execute(ctx context.Context, value *base.Void) (*InitiateExchangeActionReturn, error) {
 	publicKey := i.ecdhPrivateKey.PublicKey()
 	keyBytes := publicKey.Bytes()
 	stringKey := base64.StdEncoding.EncodeToString(keyBytes)
@@ -58,7 +59,7 @@ func (i *InitiateExchangeAction) Execute(value *base.Void) (*InitiateExchangeAct
 	buf.Write(encoded)
 
 	var reader io.Reader = &buf
-	signature, err := i.signMessageAction.Execute(&reader)
+	signature, err := i.signMessageAction.Execute(ctx, &reader)
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to generate signature: %w", err)

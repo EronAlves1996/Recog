@@ -29,7 +29,8 @@ type ClientSecretRequest struct {
 }
 
 type CompleteExchangeActionReturn struct {
-	Message string `json:"message"`
+	Message   string `json:"message"`
+	SessionID string `json:"sessionId"`
 }
 
 var logger = log.Default()
@@ -153,4 +154,6 @@ func main() {
 	}
 
 	logger.Printf("message decrypted: %s", string(plaintext))
+	logger.Printf("session id: %s", string(decodedEncryptedMessage.SessionID))
+
 }

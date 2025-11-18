@@ -1,7 +1,9 @@
 package base
 
+import "context"
+
 type Action[T any, R any] interface {
-	Execute(in *T) (*R, error)
+	Execute(ctx context.Context, in *T) (*R, error)
 }
 
 type Void struct{}

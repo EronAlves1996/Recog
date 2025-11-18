@@ -60,7 +60,7 @@ func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[s
 			return
 		}
 
-		ret, err := completeExchangeAction.Execute(&message.ClientPublicKey)
+		ret, err := completeExchangeAction.Execute(c.Request.Context(), &message.ClientPublicKey)
 		if err != nil {
 			l.Errorw("failed to execute action", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, err)
@@ -74,7 +74,7 @@ func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[s
 
 func initiateExchange(l *zap.SugaredLogger, action base.Action[base.Void, exchange.InitiateExchangeActionReturn]) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ret, err := action.Execute(nil)
+		ret, err := action.Execute(c.Request.Context(), nil)
 		if err != nil {
 			l.Errorw("failed to execute action", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
@@ -139,7 +139,7 @@ func signMessage(l *zap.SugaredLogger, action base.Action[io.Reader, []byte]) fu
 		buf.Write(marshaled)
 		var reader io.Reader = buf
 
-		signature, err := action.Execute(&reader)
+		signature, err := action.Execute(c.Request.Context(), &reader)
 		if err != nil {
 			l.Errorw("Unable to generate signature", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
