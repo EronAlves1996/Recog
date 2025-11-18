@@ -33,6 +33,10 @@ type CompleteExchangeActionReturn struct {
 	SessionID string `json:"sessionId"`
 }
 
+type TicketRetrieveResponse struct {
+	Ticket string `json:"ticket"`
+}
+
 var logger = log.Default()
 
 func main() {
@@ -155,5 +159,18 @@ func main() {
 
 	logger.Printf("message decrypted: %s", string(plaintext))
 	logger.Printf("session id: %s", string(decodedEncryptedMessage.SessionID))
+
+	sessionTicketRetrieveResponse, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/session/ticket/%s", decodedEncryptedMessage.SessionID))
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to get ticket: %w", err))
+	}
+	defer sessionTicketRetrieveResponse.Body.Close()
+
+	var ticket TicketRetrieveResponse
+	if err := json.NewDecoder(sessionTicketRetrieveResponse.Body).Decode(&ticket); err != nil {
+		log.Fatal(fmt.Errorf("unable to desserialize ticket response: %w", err))
+	}
+
+	logger.Printf("retrieved ticket: %s", ticket.Ticket)
 
 }

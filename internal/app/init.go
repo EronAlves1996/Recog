@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
+	"github.com/EronAlves1996/Recog/internal/app/session"
 	"github.com/EronAlves1996/Recog/internal/app/signature"
 	"github.com/EronAlves1996/Recog/internal/pkg/cryptoutils"
 	"github.com/gin-gonic/gin"
@@ -63,8 +64,15 @@ func Run() {
 	signMessageAction := signature.NewSignBytesRsaAction(rsaPair, l)
 	initiateExchangeAction := exchange.NewInitiateExchangeAction(l, ecdhPrivateKey, signMessageAction)
 	completeExchangeAction := exchange.NewCompleteExchangeAction(ecdhPrivateKey, redisClient, aesSessionTicketKey)
+	retrieveSessionTicketAction := session.NewRetrieveTicketAction(*redisClient)
 
-	registerRoutes(l, rsaPair, router, initiateExchangeAction, signMessageAction, completeExchangeAction)
+	registerRoutes(l,
+		rsaPair,
+		router,
+		initiateExchangeAction,
+		signMessageAction,
+		completeExchangeAction,
+		retrieveSessionTicketAction)
 
 	l.Info("Listening on 8080")
 	router.Run()

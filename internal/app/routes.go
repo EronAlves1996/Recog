@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -44,12 +45,31 @@ func registerRoutes(l *zap.SugaredLogger,
 	router *gin.Engine,
 	action base.Action[base.Void, exchange.InitiateExchangeActionReturn],
 	signMessageAction base.Action[io.Reader, []byte],
-	completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn]) {
+	completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn],
+	retrieveSessionTicketAction base.Action[string, string]) {
 	router.POST("/file/hash", hashFile(l))
 	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, signMessageAction))
 	router.POST("/verify", gin.Bind(VerifyMessageSignatureRequest{}), verifyMessageSignature(l, rsaPair))
 	router.POST("/exchange/initiate", initiateExchange(l, action))
 	router.POST("/exchange/complete", gin.Bind(ClientSecretRequest{}), completeExchange(l, completeExchangeAction))
+	router.GET("/session/ticket/:id", retrieveSessionTicket(l, retrieveSessionTicketAction))
+}
+
+func retrieveSessionTicket(l *zap.SugaredLogger, retrieveSessionTicketAction base.Action[string, string]) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		stringId := c.Param("id")
+
+		ticket, err := retrieveSessionTicketAction.Execute(c.Request.Context(), &stringId)
+		if err != nil {
+			l.Errorw("failed to retrieve ticket", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to retrieve ticket: %w", err))
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"ticket": ticket,
+		})
+	}
 }
 
 func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn]) gin.HandlerFunc {
