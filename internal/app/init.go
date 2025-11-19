@@ -65,6 +65,7 @@ func Run() {
 	initiateExchangeAction := exchange.NewInitiateExchangeAction(l, ecdhPrivateKey, signMessageAction)
 	completeExchangeAction := exchange.NewCompleteExchangeAction(ecdhPrivateKey, redisClient, aesSessionTicketKey)
 	retrieveSessionTicketAction := session.NewRetrieveTicketAction(*redisClient)
+	resumeSessionAction := session.NewResumeSessionAction(aesSessionTicketKey)
 
 	registerRoutes(l,
 		rsaPair,
@@ -72,7 +73,8 @@ func Run() {
 		initiateExchangeAction,
 		signMessageAction,
 		completeExchangeAction,
-		retrieveSessionTicketAction)
+		retrieveSessionTicketAction,
+		resumeSessionAction)
 
 	l.Info("Listening on 8080")
 	router.Run()

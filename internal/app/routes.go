@@ -40,19 +40,41 @@ type ClientSecretRequest struct {
 	ClientPublicKey string `json:"clientPublicKey" binding:"required" validate:"min=1"`
 }
 
+type ResumeSessionRequest struct {
+	SessionTicket string `json:"sessionTicket" binding:"required"`
+}
+
 func registerRoutes(l *zap.SugaredLogger,
 	rsaPair *cryptoutils.RsaPair,
 	router *gin.Engine,
 	action base.Action[base.Void, exchange.InitiateExchangeActionReturn],
 	signMessageAction base.Action[io.Reader, []byte],
 	completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn],
-	retrieveSessionTicketAction base.Action[string, string]) {
+	retrieveSessionTicketAction base.Action[string, string],
+	resumeSessionAction base.Action[string, base.Void]) {
 	router.POST("/file/hash", hashFile(l))
 	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, signMessageAction))
 	router.POST("/verify", gin.Bind(VerifyMessageSignatureRequest{}), verifyMessageSignature(l, rsaPair))
 	router.POST("/exchange/initiate", initiateExchange(l, action))
 	router.POST("/exchange/complete", gin.Bind(ClientSecretRequest{}), completeExchange(l, completeExchangeAction))
 	router.GET("/session/ticket/:id", retrieveSessionTicket(l, retrieveSessionTicketAction))
+	router.POST("/session/resume", gin.Bind(ResumeSessionRequest{}), resumeSession(l, resumeSessionAction))
+}
+
+func resumeSession(l *zap.SugaredLogger, resumeSessionAction base.Action[string, base.Void]) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ticket, ok := c.MustGet(gin.BindKey).(*ResumeSessionRequest)
+		if !ok {
+			abortFailedToDesserialize(l, c)
+			return
+		}
+
+		if _, err := resumeSessionAction.Execute(c.Request.Context(), &ticket.SessionTicket); err != nil {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("unable to resume session"))
+			return
+		}
+	}
+
 }
 
 func retrieveSessionTicket(l *zap.SugaredLogger, retrieveSessionTicketAction base.Action[string, string]) gin.HandlerFunc {

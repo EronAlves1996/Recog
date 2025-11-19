@@ -1,18 +1,17 @@
 package exchange
 
 import (
-	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"time"
 
+	"github.com/EronAlves1996/Recog/internal/app/ticket"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -25,7 +24,8 @@ type CompleteExchangeAction struct {
 
 func NewCompleteExchangeAction(ecdhPrivateKey *ecdh.PrivateKey,
 	redisClient *redis.Client,
-	aesSessionTicketKey []byte) *CompleteExchangeAction {
+	aesSessionTicketKey []byte,
+) *CompleteExchangeAction {
 	return &CompleteExchangeAction{
 		ecdhPrivateKey:      ecdhPrivateKey,
 		redisClient:         redisClient,
@@ -34,7 +34,6 @@ func NewCompleteExchangeAction(ecdhPrivateKey *ecdh.PrivateKey,
 }
 
 func encrypt(secret []byte, plainText []byte) ([]byte, error) {
-
 	block, err := aes.NewCipher(secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate aes cipher: %w", err)
@@ -85,39 +84,20 @@ func (c *CompleteExchangeAction) Execute(ctx context.Context, clientKey *string)
 	}
 
 	timestamp := time.Now().Add(time.Minute * 10)
-	encodedTimestamp, err := timestamp.GobEncode()
+
+	sessionTicket := ticket.SessionTicket{
+		ExpiresAt: timestamp,
+		SessionID: sessionID,
+		Secret:    secret,
+	}
+
+	encoded, err := sessionTicket.Encode()
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode session ttl: %w", err)
+		return nil, fmt.Errorf("unable to encode session ticket")
 	}
 
-	timestampLen := len(encodedTimestamp)
-
-	encodedSessionID, err := sessionID.MarshalBinary()
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode session ID: %w", err)
-	}
-
-	sessionIDLen := len(encodedSessionID)
-
-	// The message format is described as
-	//
-	// | 8              | timestamp-size | 8             | sessionID-size | secret
-	// | timestamp-size | ttl-timestamp | sessionID-size | sessionID      | secret
-	var message bytes.Buffer
-
-	if err := binary.Write(&message, binary.LittleEndian, int64(timestampLen)); err != nil {
-		return nil, fmt.Errorf("failed to encode session ticket: %w", err)
-	}
-	message.Write(encodedTimestamp)
-
-	if err := binary.Write(&message, binary.LittleEndian, int64(sessionIDLen)); err != nil {
-		return nil, fmt.Errorf("failed to encode session ticket: %w", err)
-	}
-	message.Write(encodedSessionID)
-	message.Write(secret)
-
-	encryptedSessionTicket, err := encrypt(c.aesSessionTicketKey, message.Bytes())
+	encryptedSessionTicket, err := encrypt(c.aesSessionTicketKey, encoded)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt session ticket: %w", err)
 	}

@@ -37,6 +37,10 @@ type TicketRetrieveResponse struct {
 	Ticket string `json:"ticket"`
 }
 
+type ResumeSessionTicketRequest struct {
+	SessionTicket string `json:"sessionTicket"`
+}
+
 var logger = log.Default()
 
 func main() {
@@ -172,5 +176,23 @@ func main() {
 	}
 
 	logger.Printf("retrieved ticket: %s", ticket.Ticket)
+
+	sessionTicketResume := ResumeSessionTicketRequest{
+		SessionTicket: ticket.Ticket,
+	}
+	var bytes bytes.Buffer
+	marshalledRequest, err := json.Marshal(sessionTicketResume)
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to marshal session ticket request: %w", err))
+	}
+
+	bytes.Write(marshalledRequest)
+
+	resumeSessionTicketResp, err := http.Post("http://127.0.0.1:8080/session/resume", "application/json", &bytes)
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to resume session: %w", err))
+	}
+
+	logger.Println(resumeSessionTicketResp.Status)
 
 }
