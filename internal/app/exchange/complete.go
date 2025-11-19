@@ -1,57 +1,39 @@
 package exchange
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
-	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"time"
+
+	"github.com/EronAlves1996/Recog/internal/app/ticket"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 type CompleteExchangeAction struct {
-	ecdhPrivateKey *ecdh.PrivateKey
+	ecdhPrivateKey      *ecdh.PrivateKey
+	redisClient         *redis.Client
+	aesSessionTicketKey []byte
 }
 
-func NewCompleteExchangeAction(ecdhPrivateKey *ecdh.PrivateKey) *CompleteExchangeAction {
+func NewCompleteExchangeAction(ecdhPrivateKey *ecdh.PrivateKey,
+	redisClient *redis.Client,
+	aesSessionTicketKey []byte,
+) *CompleteExchangeAction {
 	return &CompleteExchangeAction{
-		ecdhPrivateKey: ecdhPrivateKey,
+		ecdhPrivateKey:      ecdhPrivateKey,
+		redisClient:         redisClient,
+		aesSessionTicketKey: aesSessionTicketKey,
 	}
 }
 
-type CompleteExchangeActionReturn struct {
-	Message string `json:"message"`
-}
-
-func (c *CompleteExchangeAction) Execute(clientKey *string) (*CompleteExchangeActionReturn, error) {
-	decoded, err := base64.StdEncoding.DecodeString(*clientKey)
-	if err != nil {
-		return nil, fmt.Errorf("unable to decoded the base64 client key: %w", err)
-	}
-
-	probableKey, err := x509.ParsePKIXPublicKey(decoded)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse key in pkix format: %w", err)
-	}
-
-	ecdsaPublicKey, ok := probableKey.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("unable to interpret the parsed key as ecdsa public key")
-	}
-
-	publicKey, err := ecdsaPublicKey.ECDH()
-	if err != nil {
-		return nil, fmt.Errorf("unable to convert ecdsa public key to ecdh public key")
-	}
-
-	secret, err := c.ecdhPrivateKey.ECDH(publicKey)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse the secret: %w", err)
-	}
-
+func encrypt(secret []byte, plainText []byte) ([]byte, error) {
 	block, err := aes.NewCipher(secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate aes cipher: %w", err)
@@ -67,10 +49,66 @@ func (c *CompleteExchangeAction) Execute(clientKey *string) (*CompleteExchangeAc
 		return nil, fmt.Errorf("failed to initialize the intialization vector: %w", err)
 	}
 
-	plainText := []byte("handshake complete")
-	cipherText := gcm.Seal(nonce, nonce, plainText, nil)
+	return gcm.Seal(nonce, nonce, plainText, nil), nil
+}
+
+type CompleteExchangeActionReturn struct {
+	Message   string `json:"message"`
+	SessionID string `json:"sessionId"`
+}
+
+func (c *CompleteExchangeAction) Execute(ctx context.Context, clientKey *string) (*CompleteExchangeActionReturn, error) {
+	decoded, err := base64.StdEncoding.DecodeString(*clientKey)
+	if err != nil {
+		return nil, fmt.Errorf("unable to decoded the base64 client key: %w", err)
+	}
+
+	publicKey, err := ecdh.P256().NewPublicKey(decoded)
+	if err != nil {
+		return nil, fmt.Errorf("unable to convert ecdsa public key to ecdh public key")
+	}
+
+	secret, err := c.ecdhPrivateKey.ECDH(publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse the secret: %w", err)
+	}
+
+	cipherText, err := encrypt(secret, []byte("handshake complete"))
+	if err != nil {
+		return nil, fmt.Errorf("unable to encrypt text: %w", err)
+	}
+
+	sessionID, err := uuid.NewUUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate a new session id: %w", err)
+	}
+
+	timestamp := time.Now().Add(time.Minute * 10)
+
+	sessionTicket := ticket.SessionTicket{
+		ExpiresAt: timestamp,
+		SessionID: sessionID,
+		Secret:    secret,
+	}
+
+	encoded, err := sessionTicket.Encode()
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to encode session ticket")
+	}
+
+	encryptedSessionTicket, err := encrypt(c.aesSessionTicketKey, encoded)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt session ticket: %w", err)
+	}
+
+	fiveMinutes := 5 * time.Minute
+
+	// The session parameters have
+	c.redisClient.Set(ctx, sessionID.String(), encryptedSessionTicket, fiveMinutes)
 
 	return &CompleteExchangeActionReturn{
-		Message: base64.StdEncoding.EncodeToString(cipherText),
+		Message:   base64.StdEncoding.EncodeToString(cipherText),
+		SessionID: sessionID.String(),
 	}, nil
 }

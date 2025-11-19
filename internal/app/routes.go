@@ -6,7 +6,9 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -22,13 +24,24 @@ type SignMessageRequest struct {
 	Message string `json:"message" binding:"required" validate:"min=1"`
 }
 
+type RawJSONObject []byte
+
+func (r *RawJSONObject) UnmarshalJSON(data []byte) error {
+	*r = data
+	return nil
+}
+
 type VerifyMessageSignatureRequest struct {
-	SignMessageRequest
-	Signature string `json:"signature" binding:"required" validate:"min=1"`
+	Message   RawJSONObject `json:"message" binding:"required"`
+	Signature string        `json:"signature" binding:"required" validate:"min=1"`
 }
 
 type ClientSecretRequest struct {
 	ClientPublicKey string `json:"clientPublicKey" binding:"required" validate:"min=1"`
+}
+
+type ResumeSessionRequest struct {
+	SessionTicket string `json:"sessionTicket" binding:"required"`
 }
 
 func registerRoutes(l *zap.SugaredLogger,
@@ -36,12 +49,49 @@ func registerRoutes(l *zap.SugaredLogger,
 	router *gin.Engine,
 	action base.Action[base.Void, exchange.InitiateExchangeActionReturn],
 	signMessageAction base.Action[io.Reader, []byte],
-	completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn]) {
+	completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn],
+	retrieveSessionTicketAction base.Action[string, string],
+	resumeSessionAction base.Action[string, base.Void]) {
 	router.POST("/file/hash", hashFile(l))
 	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, signMessageAction))
 	router.POST("/verify", gin.Bind(VerifyMessageSignatureRequest{}), verifyMessageSignature(l, rsaPair))
 	router.POST("/exchange/initiate", initiateExchange(l, action))
 	router.POST("/exchange/complete", gin.Bind(ClientSecretRequest{}), completeExchange(l, completeExchangeAction))
+	router.GET("/session/ticket/:id", retrieveSessionTicket(l, retrieveSessionTicketAction))
+	router.POST("/session/resume", gin.Bind(ResumeSessionRequest{}), resumeSession(l, resumeSessionAction))
+}
+
+func resumeSession(l *zap.SugaredLogger, resumeSessionAction base.Action[string, base.Void]) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ticket, ok := c.MustGet(gin.BindKey).(*ResumeSessionRequest)
+		if !ok {
+			abortFailedToDesserialize(l, c)
+			return
+		}
+
+		if _, err := resumeSessionAction.Execute(c.Request.Context(), &ticket.SessionTicket); err != nil {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("unable to resume session"))
+			return
+		}
+	}
+
+}
+
+func retrieveSessionTicket(l *zap.SugaredLogger, retrieveSessionTicketAction base.Action[string, string]) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		stringId := c.Param("id")
+
+		ticket, err := retrieveSessionTicketAction.Execute(c.Request.Context(), &stringId)
+		if err != nil {
+			l.Errorw("failed to retrieve ticket", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to retrieve ticket: %w", err))
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"ticket": ticket,
+		})
+	}
 }
 
 func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn]) gin.HandlerFunc {
@@ -52,7 +102,7 @@ func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[s
 			return
 		}
 
-		ret, err := completeExchangeAction.Execute(&message.ClientPublicKey)
+		ret, err := completeExchangeAction.Execute(c.Request.Context(), &message.ClientPublicKey)
 		if err != nil {
 			l.Errorw("failed to execute action", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, err)
@@ -66,7 +116,7 @@ func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[s
 
 func initiateExchange(l *zap.SugaredLogger, action base.Action[base.Void, exchange.InitiateExchangeActionReturn]) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ret, err := action.Execute(nil)
+		ret, err := action.Execute(c.Request.Context(), nil)
 		if err != nil {
 			l.Errorw("failed to execute action", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
@@ -119,11 +169,19 @@ func signMessage(l *zap.SugaredLogger, action base.Action[io.Reader, []byte]) fu
 			return
 		}
 
+		marshaled, err := json.Marshal(message.Message)
+		if err != nil {
+			l.Errorw("failed to marshal the message", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+
+			return
+		}
+
 		buf := new(bytes.Buffer)
-		buf.WriteString(message.Message)
+		buf.Write(marshaled)
 		var reader io.Reader = buf
 
-		signature, err := action.Execute(&reader)
+		signature, err := action.Execute(c.Request.Context(), &reader)
 		if err != nil {
 			l.Errorw("Unable to generate signature", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)

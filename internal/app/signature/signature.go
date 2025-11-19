@@ -1,6 +1,7 @@
 package signature
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -23,7 +24,7 @@ func NewSignBytesRsaAction(rsaPair *cryptoutils.RsaPair, logger *zap.SugaredLogg
 	}
 }
 
-func (s *SignBytesRsaAction) Execute(reader *io.Reader) (*[]byte, error) {
+func (s *SignBytesRsaAction) Execute(ctx context.Context, reader *io.Reader) (*[]byte, error) {
 	sha256 := crypto.SHA256.New()
 	if _, err := io.Copy(sha256, *reader); err != nil {
 		s.l.Errorw("Unable to hash the message", zap.Error(err))
