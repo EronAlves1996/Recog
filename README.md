@@ -4,13 +4,14 @@ A Go-based playground for security and cryptography concepts.
 
 ## Overview
 
-Recog is a service designed to experiment with and demonstrate various security and cryptographic primitives. It provides a simple RESTful API to interact with concepts like hashing, digital signatures, and secure key exchange. The project is built with Go and the Gin web framework, and it's intended to evolve, incorporating more security experiments as it grows.
+Recog is a service designed to experiment with and demonstrate various security and cryptographic primitives. It provides a simple RESTful API to interact with concepts like hashing, digital signatures, secure key exchange, and session management. The project is built with Go and the Gin web framework, and it's intended to evolve, incorporating more security experiments as it grows.
 
 ## Features
 
 - Calculate SHA256 hash of uploaded files.
 - Sign and verify text messages with an RSA key pair.
 - Perform an ECDH key exchange for secure session establishment.
+- Session ticket management for efficient session resumption.
 - Structured logging with Zap.
 
 ## Getting Started
@@ -19,163 +20,213 @@ Recog is a service designed to experiment with and demonstrate various security 
 
 - Go 1.21 or later
 - OpenSSL (to generate the required RSA and EC key pairs)
+- Redis (for session ticket storage)
 
 ### Installation
 
-1.  Clone the repository:
+1. Clone the repository:
 
-    ```bash
-    git clone https://github.com/EronAlves1996/Recog.git
-    cd Recog
-    ```
+   ```bash
+   git clone https://github.com/EronAlves1996/Recog.git
+   cd Recog
+   ```
 
-2.  Configure the environment:
+2. Configure the environment:
 
-    The application requires an RSA private key for signatures and an EC private key for the key exchange. You can generate them using OpenSSL:
+   The application requires an RSA private key for signatures, an EC private key for the key exchange, and an AES key for session tickets. You can generate them using OpenSSL:
 
-    ```bash
-    # Generate the RSA private key
-    openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
+   ```bash
+   # Generate the RSA private key
+   openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
 
-    # Generate the EC P256 private key
-    openssl ecparam -name prime256v1 -genkey -noout -out ec_private_key.pem
-    ```
+   # Generate the EC P256 private key
+   openssl ecparam -name prime256v1 -genkey -noout -out ec_private_key.pem
 
-    Next, create a `.env` file in the root of the project and add the base64 encoded content of your keys:
+   # Generate a 256-bit AES key for session tickets
+   openssl rand -base64 32 > aes_key.txt
+   ```
 
-    ```bash
-    # On macOS or Linux
-    echo "RSA_PRIVATE_KEY=\"$(cat private_key.pem | base64)\"" > .env
-    echo "EC_P256_PRIVATE_KEY=\"$(cat ec_private_key.pem | base64)\"" >> .env
+   Next, create a `.env` file in the root of the project and add the base64 encoded content of your keys:
 
-    # On Windows (Command Prompt)
-    certutil -encode private_key.pem temp.b64 && findstr /v /c:- temp.b64 > temp_rsa.b64 && del temp.b64
-    certutil -encode ec_private_key.pem temp.b64 && findstr /v /c:- temp.b64 > temp_ec.b64 && del temp.b64
-    echo RSA_PRIVATE_KEY="> .env && type temp_rsa.b64 >> .env
-    echo EC_P256_PRIVATE_KEY=">> .env && type temp_ec.b64 >> .env
-    del temp_rsa.b64 temp_ec.b64
-    ```
+   ```bash
+   # On macOS or Linux
+   echo "RSA_PRIVATE_KEY=\"$(cat private_key.pem | base64)\"" > .env
+   echo "EC_P256_PRIVATE_KEY=\"$(cat ec_private_key.pem | base64)\"" >> .env
+   echo "AES_SESSIONTICKETS_KEY=\"$(cat aes_key.txt)\"" >> .env
 
-    Your `.env` file should look like this (with much longer values):
+   # Add Redis configuration
+   echo "REDIS_URL=\"localhost:6379\"" >> .env
+   echo "REDIS_DB=\"0\"" >> .env
+   echo "REDIS_PASSWORD=\"\"" >> .env
+   ```
 
-    ```
-    RSA_PRIVATE_KEY="MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC..."
-    EC_P256_PRIVATE_KEY="MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg..."
-    ```
+   Your `.env` file should look like this (with much longer values):
 
-3.  Run the application:
+   ```
+   RSA_PRIVATE_KEY="MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC..."
+   EC_P256_PRIVATE_KEY="MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg..."
+   AES_SESSIONTICKETS_KEY="your_base64_encoded_aes_key_here"
+   REDIS_URL="localhost:6379"
+   REDIS_DB="0"
+   REDIS_PASSWORD=""
+   ```
 
-    ```bash
-    go run main.go
-    ```
+3. Start Redis:
+
+   ```bash
+   # Using Docker (recommended)
+   docker-compose up -d
+
+   # Or using a local Redis installation
+   redis-server
+   ```
+
+4. Run the application:
+
+   ```bash
+   go run cmd/app/main.go
+   ```
 
 The service will start on `http://localhost:8080`.
 
 ## Usage
 
-You can use a tool like `curl` to interact with the API.
+You can use a tool like `curl` to interact with the API, or run the provided handshake script for a complete demonstration.
 
 ### 1. Hash a File
 
-1.  Create a sample file to hash:
+1. Create a sample file to hash:
 
-    ```bash
-    echo "hello world" > example.txt
-    ```
+   ```bash
+   echo "hello world" > example.txt
+   ```
 
-2.  Send a `POST` request to the `/file/hash` endpoint:
+2. Send a `POST` request to the `/file/hash` endpoint:
 
-    ```bash
-    curl -X POST -F "file=@example.txt" http://localhost:8080/file/hash
-    ```
+   ```bash
+   curl -X POST -F "file=@example.txt" http://localhost:8080/file/hash
+   ```
 
-3.  You will receive a JSON response with the SHA256 hash:
-    ```json
-    {
-      "hash": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-    }
-    ```
+3. You will receive a JSON response with the SHA256 hash:
+   ```json
+   {
+     "hash": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+   }
+   ```
 
 ### 2. Sign a Message
 
-1.  Send a `POST` request with a JSON body to the `/sign` endpoint:
+1. Send a `POST` request with a JSON body to the `/sign` endpoint:
 
-    ```bash
-    curl -X POST -H "Content-Type: application/json" \
-    -d '{"message": "the quick brown fox jumps over the lazy dog"}' \
-    http://localhost:8080/sign
-    ```
+   ```bash
+   curl -X POST -H "Content-Type: application/json" \
+   -d '{"message": "the quick brown fox jumps over the lazy dog"}' \
+   http://localhost:8080/sign
+   ```
 
-2.  You will receive a JSON response with the base64 encoded signature:
-    ```json
-    {
-      "signature": "FqE+k...[long signature string]...="
-    }
-    ```
+2. You will receive a JSON response with the base64 encoded signature:
+   ```json
+   {
+     "signature": "FqE+k...[long signature string]...="
+   }
+   ```
 
 ### 3. Verify a Signature
 
-1.  Use the `/verify` endpoint with the original message and the signature you received.
+1. Use the `/verify` endpoint with the original message and the signature you received.
 
-    ```bash
-    curl -X POST -H "Content-Type: application/json" \
-    -d '{"message": "the quick brown fox jumps over the lazy dog", "signature": "FqE+k...="}' \
-    http://localhost:8080/verify
-    ```
+   ```bash
+   curl -X POST -H "Content-Type: application/json" \
+   -d '{"message": "the quick brown fox jumps over the lazy dog", "signature": "FqE+k...="}' \
+   http://localhost:8080/verify
+   ```
 
-2.  The response will indicate if the signature is valid:
-    ```json
-    {
-      "valid": true
-    }
-    ```
+2. The response will indicate if the signature is valid:
+   ```json
+   {
+     "valid": true
+   }
+   ```
 
-### 4. Perform an ECDH Key Exchange
+### 4. Perform an ECDH Key Exchange with Session Tickets
 
-This flow demonstrates how to establish a shared secret between a client and the server using an ECDH scheme. **Note:** This process is best performed by a programmatic client rather than manually with `curl`.
+This flow demonstrates how to establish a shared secret between a client and the server using an ECDH scheme, and then resume the session using a session ticket. **Note:** This process is best performed by a programmatic client rather than manually with `curl`.
 
-1.  **Initiate the Exchange**: The client requests the server's ECDH public key.
+For a complete demonstration, run the provided script:
 
-    ```bash
-    curl -X POST http://localhost:8080/exchange/initiate
-    ```
+```bash
+go run cmd/scripts/handshake/main.go
+```
 
-    The server responds with its public key and a signature:
+This script will:
 
-    ```json
-    {
-      "payload": {
-        "curve": "P-256",
-        "key": "BF+...[base64 encoded public key]...="
-      },
-      "signature": "MIAG...[base64 encoded signature]...="
-    }
-    ```
+1. Initiate an ECDH key exchange
+2. Verify the server's signature
+3. Complete the key exchange
+4. Retrieve a session ticket
+5. Resume the session using the ticket
 
-2.  **Client-Side Processing**:
+If you want to perform these steps manually:
 
-    - The client verifies the `signature` using the server's known RSA public key to ensure the key is authentic.
-    - The client generates its own ECDH key pair.
-    - The client computes the shared secret using its private key and the server's public key.
+1. **Initiate the Exchange**: The client requests the server's ECDH public key.
 
-3.  **Complete the Exchange**: The client sends its public key to the server.
+   ```bash
+   curl -X POST http://localhost:8080/exchange/initiate
+   ```
 
-    ```bash
-    # Replace CLIENT_PUBLIC_KEY with the client's base64 encoded public key
-    curl -X POST -H "Content-Type: application/json" \
-    -d '{"clientPublicKey": "CLIENT_PUBLIC_KEY"}' \
-    http://localhost:8080/exchange/complete
-    ```
+   The server responds with its public key and a signature:
 
-4.  **Verify the Handshake**: The server computes the same shared secret, encrypts a message with it, and sends it back.
+   ```json
+   {
+     "payload": {
+       "curve": "P-256",
+       "key": "BF+...[base64 encoded public key]...="
+     },
+     "signature": "MIAG...[base64 encoded signature]...="
+   }
+   ```
 
-    ```json
-    {
-      "message": "BASE64_ENCRYPTED_PAYLOAD"
-    }
-    ```
+2. **Complete the Exchange**: The client sends its public key to the server.
 
-    The client decrypts this message using the shared secret. If the decrypted message is "handshake complete", the exchange was successful.
+   ```bash
+   # Replace CLIENT_PUBLIC_KEY with the client's base64 encoded public key
+   curl -X POST -H "Content-Type: application/json" \
+   -d '{"clientPublicKey": "CLIENT_PUBLIC_KEY"}' \
+   http://localhost:8080/exchange/complete
+   ```
+
+3. **Retrieve Session Ticket**: The server responds with an encrypted message and a session ID.
+
+   ```json
+   {
+     "message": "BASE64_ENCRYPTED_PAYLOAD",
+     "sessionId": "UUID"
+   }
+   ```
+
+   Use the session ID to retrieve a session ticket:
+
+   ```bash
+   # Replace SESSION_ID with the session ID from the previous response
+   curl -X GET http://localhost:8080/session/ticket/SESSION_ID
+   ```
+
+   The server responds with an encrypted session ticket:
+
+   ```json
+   {
+     "ticket": "BASE64_ENCRYPTED_TICKET"
+   }
+   ```
+
+4. **Resume Session**: Use the ticket to resume the session:
+
+   ```bash
+   # Replace TICKET with the ticket from the previous response
+   curl -X POST -H "Content-Type: application/json" \
+   -d '{"sessionTicket": "TICKET"}' \
+   http://localhost:8080/session/resume
+   ```
 
 ## API Reference
 
@@ -303,13 +354,57 @@ Completes the ECDH key exchange by receiving the client's public key and returni
 **Success Response (200 OK):**
 
 - **Content-Type:** `application/json`
-- **Body:** A JSON object with a `message` key containing an encrypted payload.
+- **Body:** A JSON object with a `message` key containing an encrypted payload and a `sessionId` key.
 
   ```json
   {
-    "message": "base64-encoded-aes-gcm-encrypted-message"
+    "message": "base64-encoded-aes-gcm-encrypted-message",
+    "sessionId": "uuid-session-id"
   }
   ```
+
+### GET /session/ticket/:id
+
+Retrieves a session ticket for the given session ID.
+
+**Request:**
+
+- **Method:** `GET`
+- **URL:** `/session/ticket/:id`
+- **Path Parameters:** `id` - The session ID
+
+**Success Response (200 OK):**
+
+- **Content-Type:** `application/json`
+- **Body:** A JSON object with a `ticket` key.
+
+  ```json
+  {
+    "ticket": "base64-encoded-session-ticket"
+  }
+  ```
+
+### POST /session/resume
+
+Resumes a session using a session ticket.
+
+**Request:**
+
+- **Method:** `POST`
+- **URL:** `/session/resume`
+- **Headers:** `Content-Type: application/json`
+- **Body:** A JSON object with a `sessionTicket` key.
+
+  ```json
+  {
+    "sessionTicket": "base64-encoded-session-ticket"
+  }
+  ```
+
+**Success Response (200 OK):**
+
+- **Content-Type:** `application/json`
+- **Body:** Empty
 
 **Error Responses:**
 
@@ -321,9 +416,9 @@ Completes the ECDH key exchange by receiving the client's public key and returni
 
 This project is intended to grow. Future planned features include:
 
-- Ephemeral ECDH key exchange for forward secrecy.
-- AES-GCM for symmetric encryption.
 - Key Derivation Function (HKDF) for secure key generation.
+- Ephemeral ECDH key exchange for forward secrecy.
+- Key rotation mechanisms for session tickets.
 - Support for multiple hash algorithms (MD5, SHA1, SHA512).
 - Text string hashing endpoint.
 - JWT generation and validation.
