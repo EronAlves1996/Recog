@@ -4,7 +4,7 @@ A Go-based playground for security and cryptography concepts.
 
 ## Overview
 
-Recog is a service designed to experiment with and demonstrate various security and cryptographic primitives. It provides a simple RESTful API to interact with concepts like hashing, digital signatures, secure key exchange, and session management. The project is built with Go and the Gin web framework, and it's intended to evolve, incorporating more security experiments as it grows.
+Recog is a service designed to experiment with and demonstrate various security and cryptographic primitives. It provides a simple RESTful API to interact with concepts like hashing, digital signatures, secure key exchange, session management, and certificate validation. The project is built with Go and the Gin web framework, and it's intended to evolve, incorporating more security experiments as it grows.
 
 ## Features
 
@@ -12,6 +12,7 @@ Recog is a service designed to experiment with and demonstrate various security 
 - Sign and verify text messages with an RSA key pair.
 - Perform an ECDH key exchange for secure session establishment.
 - Session ticket management for efficient session resumption.
+- X.509 certificate validation against a trusted root CA.
 - Structured logging with Zap.
 
 ## Getting Started
@@ -71,7 +72,28 @@ Recog is a service designed to experiment with and demonstrate various security 
    REDIS_PASSWORD=""
    ```
 
-3. Start Redis:
+3. Generate test certificates for certificate validation:
+
+   ```bash
+   # Generate a root CA key and self-signed certificate
+   openssl genrsa -out root-ca.key 4096
+   openssl req -x509 -new -nodes -key root-ca.key -sha256 -days 3650 -out ca.crt \
+     -subj "/C=US/ST=California/L=San Francisco/O=Test CA/OU=Test Department/CN=Test Root CA"
+
+   # Generate a server key and certificate signing request
+   openssl genrsa -out server.key 2048
+   openssl req -new -sha256 -key server.key -out server.csr \
+     -subj "/C=US/ST=California/L=San Francisco/O=Test Server/OU=Test Department/CN=localhost"
+
+   # Sign the server certificate with the root CA
+   openssl x509 -req -in server.csr -CA ca.crt -CAkey root-ca.key -CAcreateserial \
+     -out server.crt -days 365 -sha256 -extfile <(echo -e "subjectAltName = DNS:localhost,IP:127.0.0.1")
+
+   # Create the certificate chain file for the client script
+   cp server.crt cmd/scripts/handshake/server-chain.pem
+   ```
+
+4. Start Redis:
 
    ```bash
    # Using Docker (recommended)
@@ -81,7 +103,7 @@ Recog is a service designed to experiment with and demonstrate various security 
    redis-server
    ```
 
-4. Run the application:
+5. Run the application:
 
    ```bash
    go run cmd/app/main.go
@@ -148,9 +170,9 @@ You can use a tool like `curl` to interact with the API, or run the provided han
    }
    ```
 
-### 4. Perform an ECDH Key Exchange with Session Tickets
+### 4. Perform an ECDH Key Exchange with Session Tickets and Certificate Validation
 
-This flow demonstrates how to establish a shared secret between a client and the server using an ECDH scheme, and then resume the session using a session ticket. **Note:** This process is best performed by a programmatic client rather than manually with `curl`.
+This flow demonstrates how to establish a shared secret between a client and the server using an ECDH scheme, resume the session using a session ticket, and validate an X.509 certificate. **Note:** This process is best performed by a programmatic client rather than manually with `curl`.
 
 For a complete demonstration, run the provided script:
 
@@ -165,6 +187,7 @@ This script will:
 3. Complete the key exchange
 4. Retrieve a session ticket
 5. Resume the session using the ticket
+6. Validate a certificate chain against the trusted root CA
 
 If you want to perform these steps manually:
 
@@ -226,6 +249,13 @@ If you want to perform these steps manually:
    curl -X POST -H "Content-Type: application/json" \
    -d '{"sessionTicket": "TICKET"}' \
    http://localhost:8080/session/resume
+   ```
+
+5. **Validate Certificate**: Use the established session to validate a certificate chain:
+
+   ```bash
+   # This step requires encrypting the request with the shared secret
+   # It's best demonstrated by running the handshake script
    ```
 
 ## API Reference
@@ -406,9 +436,35 @@ Resumes a session using a session ticket.
 - **Content-Type:** `application/json`
 - **Body:** Empty
 
+### POST /certificate/validate
+
+Validates an X.509 certificate chain against a trusted root CA. This endpoint requires a valid session ticket and encrypts the request/response using the shared secret from the ECDH exchange.
+
+**Request:**
+
+- **Method:** `POST`
+- **URL:** `/certificate/validate`
+- **Headers:**
+  - `Content-Type: application/json`
+  - `X-Session-Ticket: [base64-encoded-session-ticket]`
+- **Body:** An encrypted JSON object with a `certificate` key containing a base64-encoded certificate chain.
+
+**Success Response (200 OK):**
+
+- **Content-Type:** `application/json`
+- **Body:** An encrypted JSON object with a `valid` boolean key.
+
+  ```json
+  {
+    "valid": true
+  }
+  ```
+
 **Error Responses:**
 
 - `400 Bad Request`: Missing `Content-Type` header or invalid request body.
+- `401 Unauthorized`: No session ticket found or invalid session.
+- `403 Forbidden`: Session expired.
 - `415 Unsupported Media Type`: Incorrect `Content-Type` for `/file/hash`.
 - `500 Internal Server Error`: Server-side issues during processing.
 
@@ -416,6 +472,10 @@ Resumes a session using a session ticket.
 
 This project is intended to grow. Future planned features include:
 
+- Certificate revocation checking (CRL or OCSP)
+- Support for multiple trusted root CAs
+- Hostname verification in certificate validation
+- Certificate transparency logging
 - Key Derivation Function (HKDF) for secure key generation.
 - Ephemeral ECDH key exchange for forward secrecy.
 - Key rotation mechanisms for session tickets.
