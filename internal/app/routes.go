@@ -44,21 +44,63 @@ type ResumeSessionRequest struct {
 	SessionTicket string `json:"sessionTicket" binding:"required"`
 }
 
-func registerRoutes(l *zap.SugaredLogger,
-	rsaPair *cryptoutils.RsaPair,
-	router *gin.Engine,
-	action base.Action[base.Void, exchange.InitiateExchangeActionReturn],
-	signMessageAction base.Action[io.Reader, []byte],
-	completeExchangeAction base.Action[string, exchange.CompleteExchangeActionReturn],
-	retrieveSessionTicketAction base.Action[string, string],
-	resumeSessionAction base.Action[string, base.Void]) {
-	router.POST("/file/hash", hashFile(l))
-	router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(l, signMessageAction))
-	router.POST("/verify", gin.Bind(VerifyMessageSignatureRequest{}), verifyMessageSignature(l, rsaPair))
-	router.POST("/exchange/initiate", initiateExchange(l, action))
-	router.POST("/exchange/complete", gin.Bind(ClientSecretRequest{}), completeExchange(l, completeExchangeAction))
-	router.GET("/session/ticket/:id", retrieveSessionTicket(l, retrieveSessionTicketAction))
-	router.POST("/session/resume", gin.Bind(ResumeSessionRequest{}), resumeSession(l, resumeSessionAction))
+type CertificateRequest struct {
+	Certificate string `json:"certificate" binding:"required"`
+}
+
+type ApplicationContext struct {
+	logger                      *zap.SugaredLogger
+	rsaPair                     *cryptoutils.RsaPair
+	router                      *gin.Engine
+	action                      base.Action[base.Void, exchange.InitiateExchangeActionReturn]
+	signMessageAction           base.Action[io.Reader, []byte]
+	completeExchangeAction      base.Action[string, exchange.CompleteExchangeActionReturn]
+	retrieveSessionTicketAction base.Action[string, string]
+	resumeSessionAction         base.Action[string, base.Void]
+	aesSessionTicketKey         []byte
+	validateCertificateAction   base.Action[[]byte, bool]
+}
+
+func registerRoutes(appContext ApplicationContext) {
+	appContext.router.POST("/file/hash", hashFile(appContext.logger))
+	appContext.router.POST("/sign", gin.Bind(SignMessageRequest{}), signMessage(appContext.logger, appContext.signMessageAction))
+	appContext.router.POST("/verify", gin.Bind(VerifyMessageSignatureRequest{}), verifyMessageSignature(appContext.logger, appContext.rsaPair))
+	appContext.router.POST("/exchange/initiate", initiateExchange(appContext.logger, appContext.action))
+	appContext.router.POST("/exchange/complete", gin.Bind(ClientSecretRequest{}), completeExchange(appContext.logger, appContext.completeExchangeAction))
+	appContext.router.GET("/session/ticket/:id", retrieveSessionTicket(appContext.logger, appContext.retrieveSessionTicketAction))
+	appContext.router.POST("/session/resume", gin.Bind(ResumeSessionRequest{}), resumeSession(appContext.logger, appContext.resumeSessionAction))
+	appContext.router.POST("/certificate/validate",
+		decryptBodyMiddleware(appContext.aesSessionTicketKey),
+		gin.Bind(CertificateRequest{}),
+		validateCertificate(appContext.logger, appContext.validateCertificateAction))
+}
+
+func validateCertificate(sugaredLogger *zap.SugaredLogger, validateCertificateAction base.Action[[]byte, bool]) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		certificate, ok := c.MustGet(gin.BindKey).(*CertificateRequest)
+		if !ok {
+			abortFailedToDesserialize(sugaredLogger, c)
+			return
+		}
+
+		binaryCertificate, err := base64.StdEncoding.DecodeString(certificate.Certificate)
+		if err != nil {
+			sugaredLogger.Errorw("failed to decode certificate", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		valid, err := validateCertificateAction.Execute(c.Request.Context(), &binaryCertificate)
+		if err != nil {
+			sugaredLogger.Errorw("failed to validate certificate", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"valid": *valid,
+		})
+	}
 }
 
 func resumeSession(l *zap.SugaredLogger, resumeSessionAction base.Action[string, base.Void]) gin.HandlerFunc {

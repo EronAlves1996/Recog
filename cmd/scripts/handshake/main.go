@@ -9,8 +9,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
 )
@@ -41,7 +43,30 @@ type ResumeSessionTicketRequest struct {
 	SessionTicket string `json:"sessionTicket"`
 }
 
+type CertificateRequest struct {
+	Certificate string `json:"certificate"`
+}
+
 var logger = log.Default()
+
+func encrypt(secret []byte, plainText []byte) ([]byte, error) {
+	block, err := aes.NewCipher(secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate aes cipher: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("unable to generate gcm: %w", err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("failed to initialize the intialization vector: %w", err)
+	}
+
+	return gcm.Seal(nonce, nonce, plainText, nil), nil
+}
 
 func main() {
 	logger.Println("initiating exchange")
@@ -180,19 +205,63 @@ func main() {
 	sessionTicketResume := ResumeSessionTicketRequest{
 		SessionTicket: ticket.Ticket,
 	}
-	var bytes bytes.Buffer
+	var sessionTicketBytes bytes.Buffer
 	marshalledRequest, err := json.Marshal(sessionTicketResume)
 	if err != nil {
 		log.Fatal(fmt.Errorf("unable to marshal session ticket request: %w", err))
 	}
 
-	bytes.Write(marshalledRequest)
+	sessionTicketBytes.Write(marshalledRequest)
 
-	resumeSessionTicketResp, err := http.Post("http://127.0.0.1:8080/session/resume", "application/json", &bytes)
+	resumeSessionTicketResp, err := http.Post("http://127.0.0.1:8080/session/resume", "application/json", &sessionTicketBytes)
 	if err != nil {
 		log.Fatal(fmt.Errorf("unable to resume session: %w", err))
 	}
 
 	logger.Println(resumeSessionTicketResp.Status)
 
+	serverChainBytes, err := os.ReadFile("server-chain.pem")
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to read server chain file: %w", err))
+	}
+
+	base64EncodedCertificate := base64.StdEncoding.EncodeToString(serverChainBytes)
+
+	certificate := CertificateRequest{
+		Certificate: base64EncodedCertificate,
+	}
+
+	var certificateRequestBuffer bytes.Buffer
+	if err := json.NewEncoder(&certificateRequestBuffer).Encode(certificate); err != nil {
+		log.Fatal(fmt.Errorf("unable to encode certificate request: %w", err))
+	}
+
+	encryptedBytes, err := encrypt(sharedSecret, certificateRequestBuffer.Bytes())
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to encrypt: %w", err))
+	}
+
+	var encryptedRequestBuffer bytes.Buffer
+	encryptedRequestBuffer.Write(encryptedBytes)
+
+	certificateHttpRequest, err := http.NewRequest("POST", "http://127.0.0.1:8080/certificate/validate", &encryptedRequestBuffer)
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to build certificate request, %w", err))
+	}
+
+	certificateHttpRequest.Header.Add("X-Session-Ticket", ticket.Ticket)
+	certificateHttpRequest.Header.Add("Content-Type", "application/json")
+
+	certificateResponse, err := http.DefaultClient.Do(certificateHttpRequest)
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to make request: %w", err))
+	}
+	defer certificateResponse.Body.Close()
+
+	var certificateResponseBody VerifyPayloadReturn
+	if err := json.NewDecoder(certificateResponse.Body).Decode(&certificateResponseBody); err != nil {
+		log.Fatal(fmt.Errorf("unable to decode response: %w", err))
+	}
+
+	logger.Print(certificateResponseBody)
 }

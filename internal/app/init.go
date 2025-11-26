@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/EronAlves1996/Recog/internal/app/certificate"
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
 	"github.com/EronAlves1996/Recog/internal/app/session"
 	"github.com/EronAlves1996/Recog/internal/app/signature"
@@ -67,14 +68,18 @@ func Run() {
 	retrieveSessionTicketAction := session.NewRetrieveTicketAction(*redisClient)
 	resumeSessionAction := session.NewResumeSessionAction(aesSessionTicketKey)
 
-	registerRoutes(l,
-		rsaPair,
-		router,
-		initiateExchangeAction,
-		signMessageAction,
-		completeExchangeAction,
-		retrieveSessionTicketAction,
-		resumeSessionAction)
+	registerRoutes(ApplicationContext{
+		logger:                      l,
+		rsaPair:                     rsaPair,
+		router:                      router,
+		action:                      initiateExchangeAction,
+		signMessageAction:           signMessageAction,
+		completeExchangeAction:      completeExchangeAction,
+		retrieveSessionTicketAction: retrieveSessionTicketAction,
+		resumeSessionAction:         resumeSessionAction,
+		aesSessionTicketKey:         aesSessionTicketKey,
+		validateCertificateAction:   certificate.NewValidateCertificateAction(),
+	})
 
 	l.Info("Listening on 8080")
 	router.Run()
