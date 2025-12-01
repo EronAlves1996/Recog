@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 
 	"github.com/EronAlves1996/Recog/internal/app/base"
 	"golang.org/x/crypto/ocsp"
@@ -69,8 +71,33 @@ func (v validateCertificateAction) Execute(ctx context.Context, in *[]byte) (*bo
 		return &v, nil
 	}
 
-	valid := len(chains) > 0
-	return &valid, nil
+	if !validateCertificateSignatureAlgorithm(certificate) {
+		v := false
+		return &v, nil
+	}
+
+	parsed, ok := certificate.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("unable to parse public key")
+	}
+
+	if parsed.Size() > 2048 {
+		v := false
+		return &v, nil
+	}
+
+	l := true
+	return &l, nil
+}
+
+var validSignatureAlgorithms = []x509.SignatureAlgorithm{
+	x509.SHA256WithRSA,
+	x509.SHA384WithRSA,
+	x509.SHA512WithRSA,
+}
+
+func validateCertificateSignatureAlgorithm(certificate *x509.Certificate) bool {
+	return slices.Contains(validSignatureAlgorithms, certificate.SignatureAlgorithm)
 }
 
 func validateOcspCertificatePair(certificate, issuer *x509.Certificate) (bool, error) {
