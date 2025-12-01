@@ -81,7 +81,7 @@ func (v validateCertificateAction) Execute(ctx context.Context, in *[]byte) (*bo
 		return nil, fmt.Errorf("unable to parse public key")
 	}
 
-	if parsed.Size() > 2048 {
+	if parsed.Size() < 2048 {
 		v := false
 		return &v, nil
 	}
