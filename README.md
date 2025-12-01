@@ -12,7 +12,7 @@ Recog is a service designed to experiment with and demonstrate various security 
 - Sign and verify text messages with an RSA key pair.
 - Perform an ECDH key exchange for secure session establishment.
 - Session ticket management for efficient session resumption.
-- X.509 certificate validation against a trusted root CA.
+- X.509 certificate validation with OCSP revocation checking, signature algorithm verification, and key size validation.
 - Structured logging with Zap.
 
 ## Getting Started
@@ -440,6 +440,13 @@ Resumes a session using a session ticket.
 
 Validates an X.509 certificate chain against a trusted root CA. This endpoint requires a valid session ticket and encrypts the request/response using the shared secret from the ECDH exchange.
 
+The validation process includes:
+
+- Certificate chain verification against the trusted root CA
+- OCSP (Online Certificate Status Protocol) revocation checking for each certificate in the chain
+- Signature algorithm verification (accepts only SHA256WithRSA, SHA384WithRSA, SHA512WithRSA)
+- RSA key size validation (minimum 2048 bits)
+
 **Request:**
 
 - **Method:** `POST`
@@ -472,9 +479,12 @@ Validates an X.509 certificate chain against a trusted root CA. This endpoint re
 
 This project is intended to grow. Future planned features include:
 
-- Certificate revocation checking (CRL or OCSP)
+- Certificate hostname validation
+- CRL (Certificate Revocation List) support as a fallback to OCSP
+- Support for ECDSA and other key types in certificate validation
+- Certificate chain depth validation
+- Soft-fail behavior for OCSP checking
 - Support for multiple trusted root CAs
-- Hostname verification in certificate validation
 - Certificate transparency logging
 - Key Derivation Function (HKDF) for secure key generation.
 - Ephemeral ECDH key exchange for forward secrecy.
