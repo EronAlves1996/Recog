@@ -39,6 +39,7 @@ func (v validateCertificateAction) Execute(ctx context.Context, in *[]byte) (*bo
 	caCertPool.AppendCertsFromPEM(rootCa)
 
 	verifyOptions := x509.VerifyOptions{
+		// Already validate the entire chain
 		Roots: caCertPool,
 	}
 
