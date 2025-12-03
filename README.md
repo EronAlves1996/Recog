@@ -8,12 +8,13 @@ Recog is a service designed to experiment with and demonstrate various security 
 
 ## Features
 
-- Calculate SHA256 hash of uploaded files.
-- Sign and verify text messages with an RSA key pair.
-- Perform an ECDH key exchange for secure session establishment.
-- Session ticket management for efficient session resumption.
-- X.509 certificate validation with OCSP revocation checking, signature algorithm verification, and key size validation.
-- Structured logging with Zap.
+- Calculate SHA256 hash of uploaded files and text messages
+- Sign and verify text messages with an RSA key pair
+- Perform an ECDH key exchange for secure session establishment
+- Session ticket management for efficient session resumption
+- X.509 certificate validation with OCSP revocation checking, signature algorithm verification, and key size validation
+- Structured logging with Zap
+- Input validation with custom validation rules
 
 ## Getting Started
 
@@ -72,28 +73,7 @@ Recog is a service designed to experiment with and demonstrate various security 
    REDIS_PASSWORD=""
    ```
 
-3. Generate test certificates for certificate validation:
-
-   ```bash
-   # Generate a root CA key and self-signed certificate
-   openssl genrsa -out root-ca.key 4096
-   openssl req -x509 -new -nodes -key root-ca.key -sha256 -days 3650 -out ca.crt \
-     -subj "/C=US/ST=California/L=San Francisco/O=Test CA/OU=Test Department/CN=Test Root CA"
-
-   # Generate a server key and certificate signing request
-   openssl genrsa -out server.key 2048
-   openssl req -new -sha256 -key server.key -out server.csr \
-     -subj "/C=US/ST=California/L=San Francisco/O=Test Server/OU=Test Department/CN=localhost"
-
-   # Sign the server certificate with the root CA
-   openssl x509 -req -in server.csr -CA ca.crt -CAkey root-ca.key -CAcreateserial \
-     -out server.crt -days 365 -sha256 -extfile <(echo -e "subjectAltName = DNS:localhost,IP:127.0.0.1")
-
-   # Create the certificate chain file for the client script
-   cp server.crt cmd/scripts/handshake/server-chain.pem
-   ```
-
-4. Start Redis:
+3. Start Redis:
 
    ```bash
    # Using Docker (recommended)
@@ -103,7 +83,7 @@ Recog is a service designed to experiment with and demonstrate various security 
    redis-server
    ```
 
-5. Run the application:
+4. Run the application:
 
    ```bash
    go run cmd/app/main.go
@@ -136,7 +116,30 @@ You can use a tool like `curl` to interact with the API, or run the provided han
    }
    ```
 
-### 2. Sign a Message
+### 2. Hash a Message
+
+1. Send a `POST` request with a JSON body to the `/message/hash` endpoint:
+
+   ```bash
+   curl -X POST -H "Content-Type: application/json" \
+   -d '{"message": "the quick brown fox jumps over the lazy dog"}' \
+   http://localhost:8080/message/hash
+   ```
+
+2. You will receive a JSON response with the SHA256 hash:
+
+   ```json
+   {
+     "hash": "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"
+   }
+   ```
+
+   **Validation Rules:**
+
+   - Message cannot be empty or contain only whitespace
+   - Maximum length: 100 characters
+
+### 3. Sign a Message
 
 1. Send a `POST` request with a JSON body to the `/sign` endpoint:
 
@@ -153,7 +156,7 @@ You can use a tool like `curl` to interact with the API, or run the provided han
    }
    ```
 
-### 3. Verify a Signature
+### 4. Verify a Signature
 
 1. Use the `/verify` endpoint with the original message and the signature you received.
 
@@ -170,7 +173,7 @@ You can use a tool like `curl` to interact with the API, or run the provided han
    }
    ```
 
-### 4. Perform an ECDH Key Exchange with Session Tickets and Certificate Validation
+### 5. Perform an ECDH Key Exchange with Session Tickets and Certificate Validation
 
 This flow demonstrates how to establish a shared secret between a client and the server using an ECDH scheme, resume the session using a session ticket, and validate an X.509 certificate. **Note:** This process is best performed by a programmatic client rather than manually with `curl`.
 
@@ -188,75 +191,6 @@ This script will:
 4. Retrieve a session ticket
 5. Resume the session using the ticket
 6. Validate a certificate chain against the trusted root CA
-
-If you want to perform these steps manually:
-
-1. **Initiate the Exchange**: The client requests the server's ECDH public key.
-
-   ```bash
-   curl -X POST http://localhost:8080/exchange/initiate
-   ```
-
-   The server responds with its public key and a signature:
-
-   ```json
-   {
-     "payload": {
-       "curve": "P-256",
-       "key": "BF+...[base64 encoded public key]...="
-     },
-     "signature": "MIAG...[base64 encoded signature]...="
-   }
-   ```
-
-2. **Complete the Exchange**: The client sends its public key to the server.
-
-   ```bash
-   # Replace CLIENT_PUBLIC_KEY with the client's base64 encoded public key
-   curl -X POST -H "Content-Type: application/json" \
-   -d '{"clientPublicKey": "CLIENT_PUBLIC_KEY"}' \
-   http://localhost:8080/exchange/complete
-   ```
-
-3. **Retrieve Session Ticket**: The server responds with an encrypted message and a session ID.
-
-   ```json
-   {
-     "message": "BASE64_ENCRYPTED_PAYLOAD",
-     "sessionId": "UUID"
-   }
-   ```
-
-   Use the session ID to retrieve a session ticket:
-
-   ```bash
-   # Replace SESSION_ID with the session ID from the previous response
-   curl -X GET http://localhost:8080/session/ticket/SESSION_ID
-   ```
-
-   The server responds with an encrypted session ticket:
-
-   ```json
-   {
-     "ticket": "BASE64_ENCRYPTED_TICKET"
-   }
-   ```
-
-4. **Resume Session**: Use the ticket to resume the session:
-
-   ```bash
-   # Replace TICKET with the ticket from the previous response
-   curl -X POST -H "Content-Type: application/json" \
-   -d '{"sessionTicket": "TICKET"}' \
-   http://localhost:8080/session/resume
-   ```
-
-5. **Validate Certificate**: Use the established session to validate a certificate chain:
-
-   ```bash
-   # This step requires encrypting the request with the shared secret
-   # It's best demonstrated by running the handshake script
-   ```
 
 ## API Reference
 
@@ -281,6 +215,38 @@ Calculates the SHA256 hash of a provided file.
     "hash": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
   }
   ```
+
+### POST /message/hash
+
+Calculates the SHA256 hash of a text message.
+
+**Request:**
+
+- **Method:** `POST`
+- **URL:** `/message/hash`
+- **Headers:** `Content-Type: application/json`
+- **Body:** A JSON object with a `message` key (1-100 characters, cannot be empty or whitespace only).
+
+  ```json
+  {
+    "message": "text to hash"
+  }
+  ```
+
+**Success Response (200 OK):**
+
+- **Content-Type:** `application/json`
+- **Body:** A JSON object with a `hash` key.
+
+  ```json
+  {
+    "hash": "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
+  }
+  ```
+
+**Error Responses:**
+
+- `400 Bad Request`: Invalid input (empty, too long, or whitespace only)
 
 ### POST /sign
 
@@ -479,6 +445,11 @@ The validation process includes:
 
 This project is intended to grow. Future planned features include:
 
+- Support for multiple hash algorithms (MD5, SHA1, SHA512)
+- JWT generation and validation
+- Implementation of basic security controls (rate limiting, CORS)
+- Add support for multiple elliptic curves (e.g., X25519)
+- Implement robust session management for key exchanges
 - Certificate hostname validation
 - CRL (Certificate Revocation List) support as a fallback to OCSP
 - Support for ECDSA and other key types in certificate validation
@@ -486,15 +457,16 @@ This project is intended to grow. Future planned features include:
 - Soft-fail behavior for OCSP checking
 - Support for multiple trusted root CAs
 - Certificate transparency logging
-- Key Derivation Function (HKDF) for secure key generation.
-- Ephemeral ECDH key exchange for forward secrecy.
-- Key rotation mechanisms for session tickets.
-- Support for multiple hash algorithms (MD5, SHA1, SHA512).
-- Text string hashing endpoint.
-- JWT generation and validation.
-- Implementation of basic security controls (rate limiting, CORS).
-- Add support for multiple elliptic curves (e.g., X25519).
-- Implement robust session management for key exchanges.
+- Key Derivation Function (HKDF) for secure key generation
+- Ephemeral ECDH key exchange for forward secrecy
+- Key rotation mechanisms for session tickets
+
+## Architecture Improvements Implemented
+
+- **Custom validation middleware** with reusable validation rules
+- **Shared hash service** for consistent hashing logic across endpoints
+- **Centralized error handling** with standardized error responses
+- **Separation of concerns** through dedicated packages for routing, business logic, and utilities
 
 ## Contributing
 
