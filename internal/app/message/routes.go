@@ -33,7 +33,7 @@ func hashBody(logger *zap.SugaredLogger) gin.HandlerFunc {
 		}
 
 		hasher := crypto.SHA256.New()
-		message, err := hash.Hash(hasher, strings.NewReader(body.Message))
+		hashString, err := hash.Hash(hasher, strings.NewReader(body.Message))
 		if err != nil {
 			logger.Errorw("failed to hash message", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
@@ -41,7 +41,7 @@ func hashBody(logger *zap.SugaredLogger) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"hash": message,
+			"hash": hashString,
 		})
 	}
 }

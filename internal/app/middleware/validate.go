@@ -11,6 +11,14 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+func init() {
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		v.RegisterValidation("notblank", func(fl validator.FieldLevel) bool {
+			return strings.TrimSpace(fl.Field().String()) != ""
+		})
+	}
+}
+
 func ValidateMiddleware(val any) gin.HandlerFunc {
 	value := reflect.ValueOf(val)
 	if value.Kind() == reflect.Ptr {
@@ -19,12 +27,6 @@ func ValidateMiddleware(val any) gin.HandlerFunc {
 `)
 	}
 	typ := value.Type()
-
-	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
-		v.RegisterValidation("notblank", func(fl validator.FieldLevel) bool {
-			return strings.TrimSpace(fl.Field().String()) != ""
-		})
-	}
 
 	return func(c *gin.Context) {
 		obj := reflect.New(typ).Interface()

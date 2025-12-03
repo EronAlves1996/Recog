@@ -11,6 +11,6 @@ import (
 var ErrInternalServerError = errors.New("internal server error")
 
 func AbortFailedToDeserialize(l *zap.SugaredLogger, c *gin.Context) {
-	l.Errorw("Unable to desserialize message request struct")
+	l.Errorw("Unable to deserialize message request struct")
 	c.AbortWithError(http.StatusInternalServerError, ErrInternalServerError)
 }
