@@ -55,7 +55,7 @@ func (b *Bucket) Leak() {
 func (b *Bucket) FillOne() bool {
 	b.Leak()
 
-	if b.Tickets == 50 {
+	if b.Tickets == bucketSize {
 		return false
 	}
 
