@@ -80,7 +80,7 @@ func validateCertificate(sugaredLogger *zap.SugaredLogger, validateCertificateAc
 	return func(c *gin.Context) {
 		certificate, ok := c.MustGet(gin.BindKey).(*CertificateRequest)
 		if !ok {
-			httputils.AbortFailedToDesserialize(sugaredLogger, c)
+			httputils.AbortFailedToDeserialize(sugaredLogger, c)
 			return
 		}
 
@@ -108,7 +108,7 @@ func resumeSession(l *zap.SugaredLogger, resumeSessionAction base.Action[string,
 	return func(c *gin.Context) {
 		ticket, ok := c.MustGet(gin.BindKey).(*ResumeSessionRequest)
 		if !ok {
-			httputils.AbortFailedToDesserialize(l, c)
+			httputils.AbortFailedToDeserialize(l, c)
 			return
 		}
 
@@ -141,7 +141,7 @@ func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[s
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*ClientSecretRequest)
 		if !ok {
-			httputils.AbortFailedToDesserialize(l, c)
+			httputils.AbortFailedToDeserialize(l, c)
 			return
 		}
 
@@ -174,7 +174,7 @@ func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *cryptoutils.RsaPair) 
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*VerifyMessageSignatureRequest)
 		if !ok {
-			httputils.AbortFailedToDesserialize(l, c)
+			httputils.AbortFailedToDeserialize(l, c)
 			return
 		}
 
@@ -208,7 +208,7 @@ func signMessage(l *zap.SugaredLogger, action base.Action[io.Reader, []byte]) fu
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*SignMessageRequest)
 		if !ok {
-			httputils.AbortFailedToDesserialize(l, c)
+			httputils.AbortFailedToDeserialize(l, c)
 			return
 		}
 
@@ -266,7 +266,7 @@ func hashFile(l *zap.SugaredLogger) func(c *gin.Context) {
 		defer openedFile.Close()
 
 		hasher := crypto.SHA256.New()
-		hashString, err := hash.Hash(l, hasher, openedFile)
+		hashString, err := hash.Hash(hasher, openedFile)
 		if err != nil {
 			l.Errorw("Error hashing file contents", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)

@@ -4,28 +4,37 @@ import (
 	"bytes"
 	"crypto"
 	"net/http"
+	"strings"
 
 	"github.com/EronAlves1996/Recog/internal/app/hash"
 	"github.com/EronAlves1996/Recog/internal/app/httputils"
+	"github.com/EronAlves1996/Recog/internal/app/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	_ "github.com/go-playground/validator/v10"
 )
 
 type HashBody struct {
-	Message string `json:"message" binding:"required"`
+	Message string `json:"message" binding:"required,min=1,max=100"`
 }
 
 func RegisterRoutes(router *gin.Engine, logger *zap.SugaredLogger) {
 	g := router.Group("/message")
 
-	g.POST("/hash", gin.Bind(HashBody{}), hashBody(logger))
+	g.POST("/hash", middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
 }
 
 func hashBody(logger *zap.SugaredLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, ok := c.MustGet(gin.BindKey).(*HashBody)
 		if !ok {
-			httputils.AbortFailedToDesserialize(logger, c)
+			httputils.AbortFailedToDeserialize(logger, c)
+			return
+		}
+
+		if strings.TrimSpace(body.Message) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "message cannot be empty"})
 			return
 		}
 
@@ -33,7 +42,7 @@ func hashBody(logger *zap.SugaredLogger) gin.HandlerFunc {
 		var buf bytes.Buffer
 		buf.WriteString(body.Message)
 
-		message, err := hash.Hash(logger, hasher, &buf)
+		message, err := hash.Hash(hasher, &buf)
 		if err != nil {
 			logger.Errorw("failed to hash message", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
