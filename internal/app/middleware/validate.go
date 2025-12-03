@@ -4,8 +4,10 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -18,12 +20,18 @@ func ValidateMiddleware(val any) gin.HandlerFunc {
 	}
 	typ := value.Type()
 
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		v.RegisterValidation("notblank", func(fl validator.FieldLevel) bool {
+			return strings.TrimSpace(fl.Field().String()) != ""
+		})
+	}
+
 	return func(c *gin.Context) {
 		obj := reflect.New(typ).Interface()
 		if err := c.ShouldBind(obj); err != nil {
 			var validationErrors validator.ValidationErrors
 
-			if ok, ok2 := c.Error(err).IsType(gin.ErrorTypeBind), errors.As(err, &validationErrors); ok && ok2 {
+			if ok := errors.As(err, &validationErrors); ok {
 
 				errorResponse := make(map[string]string)
 				for _, fieldErr := range validationErrors {

@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"crypto"
 	"net/http"
 	"strings"
@@ -16,7 +15,7 @@ import (
 )
 
 type HashBody struct {
-	Message string `json:"message" binding:"required,min=1,max=100"`
+	Message string `json:"message" binding:"required,min=1,max=100,notblank"`
 }
 
 func RegisterRoutes(router *gin.Engine, logger *zap.SugaredLogger) {
@@ -33,16 +32,8 @@ func hashBody(logger *zap.SugaredLogger) gin.HandlerFunc {
 			return
 		}
 
-		if strings.TrimSpace(body.Message) == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "message cannot be empty"})
-			return
-		}
-
 		hasher := crypto.SHA256.New()
-		var buf bytes.Buffer
-		buf.WriteString(body.Message)
-
-		message, err := hash.Hash(hasher, &buf)
+		message, err := hash.Hash(hasher, strings.NewReader(body.Message))
 		if err != nil {
 			logger.Errorw("failed to hash message", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
