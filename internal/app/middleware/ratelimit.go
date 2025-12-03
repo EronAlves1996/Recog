@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -50,6 +51,8 @@ func (b *Bucket) Leak() {
 	} else {
 		b.Tickets = updatedTickets
 	}
+
+	b.LastUpdated = now
 }
 
 func (b *Bucket) FillOne() bool {
@@ -60,6 +63,7 @@ func (b *Bucket) FillOne() bool {
 	}
 
 	b.Tickets += 1
+	b.LastUpdated = time.Now()
 	return true
 }
 
@@ -86,8 +90,15 @@ func RateLimiter(logger *zap.SugaredLogger, redisClient *redis.Client) gin.Handl
 			}
 		} else {
 			var bucket Bucket
-			if err := cmd.Scan(&bucket); err != nil {
-				logger.Errorw("failed to deserialize bucket", zap.Error(cmd.Err()))
+			marshalledBucket, err := cmd.Bytes()
+			if err != nil {
+				logger.Errorw("failed to get bucket in bytes", zap.Error(err))
+				c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
+				return
+			}
+
+			if err := json.Unmarshal(marshalledBucket, &bucket); err != nil {
+				logger.Errorw("failed to deserialize bucket", zap.Error(err))
 				c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 				return
 			}
@@ -110,7 +121,14 @@ func RateLimiter(logger *zap.SugaredLogger, redisClient *redis.Client) gin.Handl
 
 func saveBucket(redisClient *redis.Client, bucketKey string, b Bucket, logger *zap.SugaredLogger, c *gin.Context) bool {
 	ctx := c.Request.Context()
-	setCmd := redisClient.Set(ctx, bucketKey, b, 10*time.Minute)
+	j, err := json.Marshal(b)
+	if err != nil {
+		logger.Errorw("something wrong in rate limiter", zap.Error(err))
+		c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
+		return false
+	}
+
+	setCmd := redisClient.Set(ctx, bucketKey, j, 10*time.Minute)
 	if setCmd.Err() != nil {
 		logger.Errorw("something wrong in rate limiter", zap.Error(setCmd.Err()))
 		c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)

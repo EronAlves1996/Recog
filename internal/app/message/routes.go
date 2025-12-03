@@ -9,6 +9,7 @@ import (
 	"github.com/EronAlves1996/Recog/internal/app/httputils"
 	"github.com/EronAlves1996/Recog/internal/app/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	_ "github.com/go-playground/validator/v10"
@@ -18,10 +19,10 @@ type HashBody struct {
 	Message string `json:"message" binding:"required,min=1,max=100,notblank"`
 }
 
-func RegisterRoutes(router *gin.Engine, logger *zap.SugaredLogger) {
+func RegisterRoutes(router *gin.Engine, logger *zap.SugaredLogger, redisClient *redis.Client) {
 	g := router.Group("/message")
 
-	g.POST("/hash", middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
+	g.POST("/hash", middleware.RateLimiter(logger, redisClient), middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
 }
 
 func hashBody(logger *zap.SugaredLogger) gin.HandlerFunc {
