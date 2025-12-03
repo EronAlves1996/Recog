@@ -4,7 +4,7 @@ A Go-based playground for security and cryptography concepts.
 
 ## Overview
 
-Recog is a service designed to experiment with and demonstrate various security and cryptographic primitives. It provides a simple RESTful API to interact with concepts like hashing, digital signatures, secure key exchange, session management, and certificate validation. The project is built with Go and the Gin web framework, and it's intended to evolve, incorporating more security experiments as it grows.
+Recog is a service designed to experiment with and demonstrate various security and cryptographic primitives. It provides a simple RESTful API to interact with concepts like hashing, digital signatures, secure key exchange, session management, certificate validation, and rate limiting. The project is built with Go and the Gin web framework, and it's intended to evolve, incorporating more security experiments as it grows.
 
 ## Features
 
@@ -13,6 +13,7 @@ Recog is a service designed to experiment with and demonstrate various security 
 - Perform an ECDH key exchange for secure session establishment
 - Session ticket management for efficient session resumption
 - X.509 certificate validation with OCSP revocation checking, signature algorithm verification, and key size validation
+- **Rate limiting** using token bucket algorithm for API endpoints
 - Structured logging with Zap
 - Input validation with custom validation rules
 
@@ -22,7 +23,7 @@ Recog is a service designed to experiment with and demonstrate various security 
 
 - Go 1.21 or later
 - OpenSSL (to generate the required RSA and EC key pairs)
-- Redis (for session ticket storage)
+- Redis (for session ticket storage and rate limiting)
 
 ### Installation
 
@@ -117,6 +118,8 @@ You can use a tool like `curl` to interact with the API, or run the provided han
    ```
 
 ### 2. Hash a Message
+
+**Note: This endpoint is rate-limited (50 requests per 10-minute window). Excessive requests will receive a 429 Too Many Requests response.**
 
 1. Send a `POST` request with a JSON body to the `/message/hash` endpoint:
 
@@ -220,6 +223,8 @@ Calculates the SHA256 hash of a provided file.
 
 Calculates the SHA256 hash of a text message.
 
+**Note: This endpoint is rate-limited. Excessive requests will receive a 429 response.**
+
 **Request:**
 
 - **Method:** `POST`
@@ -247,6 +252,7 @@ Calculates the SHA256 hash of a text message.
 **Error Responses:**
 
 - `400 Bad Request`: Invalid input (empty, too long, or whitespace only)
+- `429 Too Many Requests`: Rate limit exceeded
 
 ### POST /sign
 
@@ -439,27 +445,33 @@ The validation process includes:
 - `401 Unauthorized`: No session ticket found or invalid session.
 - `403 Forbidden`: Session expired.
 - `415 Unsupported Media Type`: Incorrect `Content-Type` for `/file/hash`.
+- `429 Too Many Requests`: Rate limit exceeded.
 - `500 Internal Server Error`: Server-side issues during processing.
 
 ## Roadmap
 
-This project is intended to grow. Future planned features include:
+Future planned features and improvements include:
 
-- Support for multiple hash algorithms (MD5, SHA1, SHA512)
-- JWT generation and validation
-- Implementation of basic security controls (rate limiting, CORS)
-- Add support for multiple elliptic curves (e.g., X25519)
-- Implement robust session management for key exchanges
-- Certificate hostname validation
-- CRL (Certificate Revocation List) support as a fallback to OCSP
-- Support for ECDSA and other key types in certificate validation
-- Certificate chain depth validation
-- Soft-fail behavior for OCSP checking
-- Support for multiple trusted root CAs
-- Certificate transparency logging
-- Key Derivation Function (HKDF) for secure key generation
-- Ephemeral ECDH key exchange for forward secrecy
-- Key rotation mechanisms for session tickets
+- **Rate Limiting Enhancements**
+  - Configurable rate limits via environment variables
+  - Redis atomic operations to replace global mutex
+  - Per-endpoint rate limiting configurations
+- **Certificate Validation**
+  - Certificate hostname validation
+  - CRL (Certificate Revocation List) support as a fallback to OCSP
+  - Support for ECDSA and other key types
+  - Certificate chain depth validation
+  - Support for multiple trusted root CAs
+  - Certificate transparency logging
+- **Key Management**
+  - Key Derivation Function (HKDF) for secure key generation
+  - Ephemeral ECDH key exchange for forward secrecy
+  - Key rotation mechanisms for session tickets
+- **General Security**
+  - JWT generation and validation
+  - CORS configuration for cross-origin requests
+  - Support for multiple elliptic curves (e.g., X25519)
+  - Enhanced session management for key exchanges
 
 ## Architecture Improvements Implemented
 
@@ -467,6 +479,7 @@ This project is intended to grow. Future planned features include:
 - **Shared hash service** for consistent hashing logic across endpoints
 - **Centralized error handling** with standardized error responses
 - **Separation of concerns** through dedicated packages for routing, business logic, and utilities
+- **Rate limiting middleware** with token bucket algorithm and Redis persistence
 
 ## Contributing
 

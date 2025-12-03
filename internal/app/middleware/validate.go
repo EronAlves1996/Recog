@@ -39,11 +39,11 @@ func ValidateMiddleware(val any) gin.HandlerFunc {
 				for _, fieldErr := range validationErrors {
 					errorResponse[fieldErr.Field()] = fieldErr.Tag()
 				}
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed", "details": errorResponse})
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Validation failed", "details": errorResponse})
 
 			} else {
 				// Handle other binding errors (e.g., malformed JSON)
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			}
 		} else {
 			c.Set(gin.BindKey, obj)
