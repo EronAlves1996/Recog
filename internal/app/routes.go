@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +14,8 @@ import (
 
 	"github.com/EronAlves1996/Recog/internal/app/base"
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
+	"github.com/EronAlves1996/Recog/internal/app/hash"
+	"github.com/EronAlves1996/Recog/internal/app/httputils"
 	"github.com/EronAlves1996/Recog/internal/pkg/cryptoutils"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -79,7 +80,7 @@ func validateCertificate(sugaredLogger *zap.SugaredLogger, validateCertificateAc
 	return func(c *gin.Context) {
 		certificate, ok := c.MustGet(gin.BindKey).(*CertificateRequest)
 		if !ok {
-			abortFailedToDesserialize(sugaredLogger, c)
+			httputils.AbortFailedToDesserialize(sugaredLogger, c)
 			return
 		}
 
@@ -107,7 +108,7 @@ func resumeSession(l *zap.SugaredLogger, resumeSessionAction base.Action[string,
 	return func(c *gin.Context) {
 		ticket, ok := c.MustGet(gin.BindKey).(*ResumeSessionRequest)
 		if !ok {
-			abortFailedToDesserialize(l, c)
+			httputils.AbortFailedToDesserialize(l, c)
 			return
 		}
 
@@ -140,7 +141,7 @@ func completeExchange(l *zap.SugaredLogger, completeExchangeAction base.Action[s
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*ClientSecretRequest)
 		if !ok {
-			abortFailedToDesserialize(l, c)
+			httputils.AbortFailedToDesserialize(l, c)
 			return
 		}
 
@@ -161,7 +162,7 @@ func initiateExchange(l *zap.SugaredLogger, action base.Action[base.Void, exchan
 		ret, err := action.Execute(c.Request.Context(), nil)
 		if err != nil {
 			l.Errorw("failed to execute action", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 			return
 		}
 
@@ -173,7 +174,7 @@ func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *cryptoutils.RsaPair) 
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*VerifyMessageSignatureRequest)
 		if !ok {
-			abortFailedToDesserialize(l, c)
+			httputils.AbortFailedToDesserialize(l, c)
 			return
 		}
 
@@ -181,14 +182,14 @@ func verifyMessageSignature(l *zap.SugaredLogger, rsaPair *cryptoutils.RsaPair) 
 		decoded, err := base64.StdEncoding.DecodeString(signature)
 		if err != nil {
 			l.Errorw("Failed to decode base64 signature", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 			return
 		}
 
 		hasher := crypto.SHA256.New()
 		if _, err := hasher.Write([]byte(m)); err != nil {
 			l.Errorw("Unable to hash the message", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 
 			return
 		}
@@ -207,14 +208,14 @@ func signMessage(l *zap.SugaredLogger, action base.Action[io.Reader, []byte]) fu
 	return func(c *gin.Context) {
 		message, ok := c.MustGet(gin.BindKey).(*SignMessageRequest)
 		if !ok {
-			abortFailedToDesserialize(l, c)
+			httputils.AbortFailedToDesserialize(l, c)
 			return
 		}
 
 		marshaled, err := json.Marshal(message.Message)
 		if err != nil {
 			l.Errorw("failed to marshal the message", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 
 			return
 		}
@@ -226,18 +227,13 @@ func signMessage(l *zap.SugaredLogger, action base.Action[io.Reader, []byte]) fu
 		signature, err := action.Execute(c.Request.Context(), &reader)
 		if err != nil {
 			l.Errorw("Unable to generate signature", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{"signature": base64.StdEncoding.EncodeToString(*signature)})
 	}
-}
-
-func abortFailedToDesserialize(l *zap.SugaredLogger, c *gin.Context) {
-	l.Errorw("Unable to desserialize message request struct")
-	c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
 }
 
 func hashFile(l *zap.SugaredLogger) func(c *gin.Context) {
@@ -257,27 +253,25 @@ func hashFile(l *zap.SugaredLogger) func(c *gin.Context) {
 		file, err := c.FormFile("file")
 		if err != nil {
 			l.Errorw("Error while opening the file", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 			return
 		}
 
 		openedFile, err := file.Open()
 		if err != nil {
 			l.Errorw("Error while opening the file", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 			return
 		}
 		defer openedFile.Close()
 
 		hasher := crypto.SHA256.New()
-		if _, err = io.Copy(hasher, openedFile); err != nil {
-			l.Errorw("Error while reading file contents", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, errInternalServerError)
+		hashString, err := hash.Hash(l, hasher, openedFile)
+		if err != nil {
+			l.Errorw("Error hashing file contents", zap.Error(err))
+			c.AbortWithError(http.StatusInternalServerError, httputils.ErrInternalServerError)
 			return
 		}
-
-		hashed := hasher.Sum(nil)
-		hashString := hex.EncodeToString(hashed)
 
 		c.JSON(http.StatusOK, gin.H{"hash": hashString})
 	}

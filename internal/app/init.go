@@ -2,12 +2,12 @@ package app
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"log"
 
 	"github.com/EronAlves1996/Recog/internal/app/certificate"
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
+	"github.com/EronAlves1996/Recog/internal/app/message"
 	"github.com/EronAlves1996/Recog/internal/app/session"
 	"github.com/EronAlves1996/Recog/internal/app/signature"
 	"github.com/EronAlves1996/Recog/internal/pkg/cryptoutils"
@@ -15,8 +15,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
-
-var errInternalServerError = errors.New("internal server error")
 
 func createRedisClient(config *Config) *redis.Client {
 	return redis.NewClient(&redis.Options{
@@ -68,6 +66,7 @@ func Run() {
 	retrieveSessionTicketAction := session.NewRetrieveTicketAction(*redisClient)
 	resumeSessionAction := session.NewResumeSessionAction(aesSessionTicketKey)
 
+	message.RegisterRoutes(router, l)
 	registerRoutes(ApplicationContext{
 		logger:                      l,
 		rsaPair:                     rsaPair,
