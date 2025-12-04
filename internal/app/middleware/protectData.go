@@ -70,6 +70,7 @@ func ProtectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 		decodedBody, err := aesutils.Decrypt(ss.Secret, body)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
+			return
 		}
 
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(decodedBody))

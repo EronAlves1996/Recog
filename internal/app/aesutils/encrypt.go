@@ -21,7 +21,7 @@ func Encrypt(secret []byte, plainText []byte) ([]byte, error) {
 
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("failed to initialize the intialization vector: %w", err)
+		return nil, fmt.Errorf("failed to initialize the initialization vector: %w", err)
 	}
 
 	return gcm.Seal(nonce, nonce, plainText, nil), nil
