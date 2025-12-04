@@ -1,4 +1,4 @@
-package app
+package middleware
 
 import (
 	"bytes"
@@ -28,7 +28,7 @@ func (w encryptorBodyWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(encrypted)
 }
 
-func protectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
+func ProtectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionTicket := c.Request.Header.Get("X-Session-Ticket")
 		if sessionTicket == "" {

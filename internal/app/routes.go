@@ -16,6 +16,7 @@ import (
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
 	"github.com/EronAlves1996/Recog/internal/app/hash"
 	"github.com/EronAlves1996/Recog/internal/app/httputils"
+	"github.com/EronAlves1996/Recog/internal/app/middleware"
 	"github.com/EronAlves1996/Recog/internal/pkg/cryptoutils"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -71,7 +72,7 @@ func registerRoutes(appContext ApplicationContext) {
 	appContext.router.GET("/session/ticket/:id", retrieveSessionTicket(appContext.logger, appContext.retrieveSessionTicketAction))
 	appContext.router.POST("/session/resume", gin.Bind(ResumeSessionRequest{}), resumeSession(appContext.logger, appContext.resumeSessionAction))
 	appContext.router.POST("/certificate/validate",
-		protectDataMiddleware(appContext.aesSessionTicketKey),
+		middleware.ProtectDataMiddleware(appContext.aesSessionTicketKey),
 		gin.Bind(CertificateRequest{}),
 		validateCertificate(appContext.logger, appContext.validateCertificateAction))
 }

@@ -19,10 +19,12 @@ type HashBody struct {
 	Message string `json:"message" binding:"required,min=1,max=100,notblank"`
 }
 
-func RegisterRoutes(router *gin.Engine, logger *zap.SugaredLogger, redisClient *redis.Client) {
+func RegisterRoutes(router *gin.Engine, logger *zap.SugaredLogger, redisClient *redis.Client, aesSessionTicketKey []byte) {
 	g := router.Group("/message")
 
-	g.POST("/hash", middleware.RateLimiter(logger, redisClient), middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
+	g.POST("/hash", middleware.RateLimiter(logger, redisClient),
+		middleware.ProtectDataMiddleware(aesSessionTicketKey),
+		middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
 }
 
 func hashBody(logger *zap.SugaredLogger) gin.HandlerFunc {
