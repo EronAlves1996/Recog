@@ -66,7 +66,7 @@ func Run() {
 	retrieveSessionTicketAction := session.NewRetrieveTicketAction(*redisClient)
 	resumeSessionAction := session.NewResumeSessionAction(aesSessionTicketKey)
 
-	message.RegisterRoutes(router, l, redisClient, aesSessionTicketKey)
+	message.RegisterRoutes(router, l, l, redisClient, aesSessionTicketKey)
 	registerRoutes(ApplicationContext{
 		logger:                      l,
 		rsaPair:                     rsaPair,
