@@ -25,6 +25,7 @@ func (w encryptorBodyWriter) Write(b []byte) (int, error) {
 		return 0, err
 	}
 
+	w.ResponseWriter.Header().Set("Content-Type", "application/octet-stream")
 	return w.ResponseWriter.Write(encrypted)
 }
 
