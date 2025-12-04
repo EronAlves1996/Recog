@@ -2,13 +2,9 @@ package app
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
@@ -16,26 +12,6 @@ import (
 	"github.com/EronAlves1996/Recog/internal/app/ticket"
 	"github.com/gin-gonic/gin"
 )
-
-func decrypt(secret []byte, ciphertext []byte) ([]byte, error) {
-	block, err := aes.NewCipher(secret)
-	if err != nil {
-		log.Fatal(fmt.Errorf("unable to make aes cipher: %w", err))
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		log.Fatal(fmt.Errorf("unable to make gcm: %w", err))
-	}
-
-	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		log.Fatal(fmt.Errorf("ciphertext too short"))
-	}
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-
-	return gcm.Open(nil, nonce, ciphertext, nil)
-}
 
 type encryptorBodyWriter struct {
 	gin.ResponseWriter
@@ -66,7 +42,7 @@ func protectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 			return
 		}
 
-		decrypted, err := decrypt(aesSessionTicketKey, decodedEncryptedSessionTicket)
+		decrypted, err := aesutils.Decrypt(aesSessionTicketKey, decodedEncryptedSessionTicket)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -90,7 +66,7 @@ func protectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 			return
 		}
 
-		decodedBody, err := decrypt(ss.Secret, body)
+		decodedBody, err := aesutils.Decrypt(ss.Secret, body)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 		}
