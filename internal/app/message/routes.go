@@ -23,6 +23,8 @@ func RegisterRoutes(router *gin.Engine, logger *zap.SugaredLogger, redisClient *
 	g := router.Group("/message")
 
 	g.POST("/hash", middleware.RateLimiter(logger, redisClient),
+		middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
+	g.POST("/hash/secure", middleware.RateLimiter(logger, redisClient),
 		middleware.ProtectDataMiddleware(aesSessionTicketKey),
 		middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
 }
