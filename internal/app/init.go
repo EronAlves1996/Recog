@@ -61,9 +61,13 @@ func Run() {
 		OutputPaths:      []string{"stdout", "rate.log"},
 		ErrorOutputPaths: []string{"rate-err.log"},
 		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey:  "message",
-			LevelKey:    "level",
-			EncodeLevel: zapcore.LowercaseColorLevelEncoder,
+			MessageKey:   "message",
+			LevelKey:     "level",
+			TimeKey:      "timestamp",
+			EncodeTime:   zapcore.ISO8601TimeEncoder,
+			EncodeLevel:  zapcore.LowercaseLevelEncoder,
+			CallerKey:    "caller",
+			EncodeCaller: zapcore.ShortCallerEncoder,
 		},
 	}
 

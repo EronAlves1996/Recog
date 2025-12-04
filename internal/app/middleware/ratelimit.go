@@ -114,10 +114,9 @@ func RateLimiter(logger *zap.SugaredLogger,
 				auditLogger.With(
 					"client_ip", ip,
 					"endpoint", c.Request.RequestURI,
-					"timestamp", time.Now(),
 					"request_count", bucket.Tickets,
 					"limit", bucketSize,
-				).Info()
+				).Warn("Request rate-limited")
 			}
 		}
 
