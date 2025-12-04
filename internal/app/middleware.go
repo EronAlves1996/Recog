@@ -36,7 +36,7 @@ func decrypt(secret []byte, ciphertext []byte) ([]byte, error) {
 	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
-func decryptBodyMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
+func protectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionTicket := c.Request.Header.Get("X-Session-Ticket")
 		if sessionTicket == "" {

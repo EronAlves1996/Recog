@@ -71,7 +71,7 @@ func registerRoutes(appContext ApplicationContext) {
 	appContext.router.GET("/session/ticket/:id", retrieveSessionTicket(appContext.logger, appContext.retrieveSessionTicketAction))
 	appContext.router.POST("/session/resume", gin.Bind(ResumeSessionRequest{}), resumeSession(appContext.logger, appContext.resumeSessionAction))
 	appContext.router.POST("/certificate/validate",
-		decryptBodyMiddleware(appContext.aesSessionTicketKey),
+		protectDataMiddleware(appContext.aesSessionTicketKey),
 		gin.Bind(CertificateRequest{}),
 		validateCertificate(appContext.logger, appContext.validateCertificateAction))
 }
