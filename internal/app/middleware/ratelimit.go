@@ -117,7 +117,7 @@ func RateLimiter(logger *zap.SugaredLogger,
 					"timestamp", time.Now(),
 					"request_count", bucket.Tickets,
 					"limit", bucketSize,
-				)
+				).Info()
 			}
 		}
 
