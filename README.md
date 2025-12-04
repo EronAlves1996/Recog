@@ -4,19 +4,20 @@ A Go-based playground for security and cryptography concepts.
 
 ## Overview
 
-Recog is a service designed to experiment with and demonstrate various security and cryptographic primitives. It provides a simple RESTful API to interact with concepts like hashing, digital signatures, secure key exchange, session management, certificate validation, and rate limiting. The project is built with Go and the Gin web framework, and it's intended to evolve, incorporating more security experiments as it grows.
+Recog is a service designed to experiment with and demonstrate various security and cryptographic primitives. It provides a RESTful API to interact with concepts like hashing, digital signatures, secure key exchange, session management, certificate validation, and security monitoring. Built with Go and the Gin framework.
 
 ## Features
 
-- Calculate SHA256 hash of uploaded files and text messages (both public and encrypted endpoints)
-- Sign and verify text messages with an RSA key pair
-- Perform an ECDH key exchange for secure session establishment
+- Calculate SHA256 hash of uploaded files and text messages
+- Sign and verify text messages with RSA key pairs
+- Perform ECDH key exchange for secure session establishment
 - Session ticket management for efficient session resumption
-- X.509 certificate validation with OCSP revocation checking, signature algorithm verification, and key size validation
+- X.509 certificate validation with OCSP revocation checking
 - **Rate limiting** using token bucket algorithm for API endpoints
-- **Request/response encryption** for secure endpoints using session-based AES-GCM encryption
+- **Request/response encryption** for secure endpoints using session-based AES-GCM
+- **Audit logging** for security events including rate-limited requests
 - Structured logging with Zap
-- Input validation with custom validation rules
+- Input validation with custom rules
 
 ## Getting Started
 
@@ -48,14 +49,11 @@ Recog is a service designed to experiment with and demonstrate various security 
    echo "EC_P256_PRIVATE_KEY=\"$(cat ec_private_key.pem | base64)\"" >> .env
    echo "AES_SESSIONTICKETS_KEY=\"$(cat aes_key.txt)\"" >> .env
    echo "REDIS_URL=\"localhost:6379\"" >> .env
-   echo "REDIS_DB=\"0\"" >> .env
-   echo "REDIS_PASSWORD=\"\"" >> .env
    ```
 
 3. Start Redis:
 
    ```bash
-   # Using Docker (recommended)
    docker-compose up -d
    ```
 
@@ -65,7 +63,7 @@ Recog is a service designed to experiment with and demonstrate various security 
    go run cmd/app/main.go
    ```
 
-The service will start on `http://localhost:8080`.
+The service starts on `http://localhost:8080`.
 
 ## Usage
 
@@ -80,11 +78,11 @@ curl -X POST -F "file=@example.txt" http://localhost:8080/file/hash
 
 #### 2. Hash a Message (Public)
 
-**Note: This endpoint is rate-limited (50 requests per 10-minute window).**
+**Note: Rate-limited to 50 requests per 10-minute window.**
 
 ```bash
 curl -X POST -H "Content-Type: application/json" \
--d '{"message": "the quick brown fox jumps over the lazy dog"}' \
+-d '{"message": "test message"}' \
 http://localhost:8080/message/hash
 ```
 
@@ -100,7 +98,7 @@ http://localhost:8080/sign
 
 ```bash
 curl -X POST -H "Content-Type: application/json" \
--d '{"message": "test message", "signature": "base64-signature-here"}' \
+-d '{"message": "test message", "signature": "base64-signature"}' \
 http://localhost:8080/verify
 ```
 
@@ -108,7 +106,7 @@ http://localhost:8080/verify
 
 Secure endpoints require a session ticket obtained through ECDH key exchange. Requests and responses are encrypted using AES-GCM with session-specific keys.
 
-For a complete demonstration of secure endpoints including key exchange, session management, and certificate validation:
+For a complete demonstration:
 
 ```bash
 go run cmd/scripts/handshake/main.go
@@ -116,19 +114,18 @@ go run cmd/scripts/handshake/main.go
 
 This script demonstrates:
 
-1. ECDH key exchange
-2. Session ticket retrieval
-3. Certificate validation with encryption
-4. Encrypted request/response flow
+- ECDH key exchange
+- Session ticket retrieval
+- Certificate validation with encryption
+- Encrypted request/response flow
 
-### New: Encrypted Message Hashing
+### Encrypted Message Hashing
 
-After establishing a session via ECDH exchange, you can use the encrypted endpoint:
+After establishing a session via ECDH exchange:
 
 ```bash
-# Requires a valid session ticket in X-Session-Ticket header
 curl -X POST http://localhost:8080/message/hash/secure \
-  -H "X-Session-Ticket: [base64-encoded-session-ticket]" \
+  -H "X-Session-Ticket: [ticket]" \
   -H "Content-Type: application/json" \
   --data-binary [encrypted-request-body]
 ```
@@ -179,17 +176,7 @@ Validates X.509 certificate chain with encryption.
 
 #### POST /message/hash/secure
 
-**New**: Encrypted endpoint for message hashing.
-
-**Request:**
-
-- Headers: `X-Session-Ticket: [base64-ticket]`, `Content-Type: application/json`
-- Body: Encrypted JSON `{"message": "text to hash"}`
-
-**Response:**
-
-- Content-Type: `application/octet-stream`
-- Body: Encrypted JSON `{"hash": "sha256-hash"}`
+Encrypted endpoint for message hashing.
 
 ## Security Architecture
 
@@ -198,7 +185,6 @@ Validates X.509 certificate chain with encryption.
 - **Session-based encryption**: Each session establishes unique AES keys via ECDH
 - **AES-GCM**: Provides both confidentiality and integrity
 - **Secure key exchange**: ECDH P-256 for forward secrecy
-- **Middleware-based**: Clean integration with existing rate limiting and validation
 
 ### Validation & Protection
 
@@ -206,6 +192,7 @@ Validates X.509 certificate chain with encryption.
 - Rate limiting with Redis persistence
 - Certificate validation with OCSP revocation checking
 - Session expiration and ticket encryption
+- **Audit logging**: Security events (rate-limited requests) logged to `rate.log` for monitoring
 
 ## Roadmap
 
@@ -223,10 +210,10 @@ Validates X.509 certificate chain with encryption.
 
 ### Future Considerations
 
-- **Chunked encryption** for large file support
+- **Enhanced audit logging** with log rotation and external log aggregation
 - **Certificate hostname validation**
 - **CRL support** as OCSP fallback
-- **Enhanced session management** with refresh tokens
+- **Chunked encryption** for large file support
 
 ## Contributing
 
