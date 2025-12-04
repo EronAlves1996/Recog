@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/EronAlves1996/Recog/internal/app/aesutils"
 	"github.com/EronAlves1996/Recog/internal/app/ticket"
 	"github.com/gin-gonic/gin"
 )
@@ -34,6 +35,21 @@ func decrypt(secret []byte, ciphertext []byte) ([]byte, error) {
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
 
 	return gcm.Open(nil, nonce, ciphertext, nil)
+}
+
+type encryptorBodyWriter struct {
+	gin.ResponseWriter
+	aesKey []byte
+}
+
+func (w encryptorBodyWriter) Write(b []byte) (int, error) {
+	encrypted, err := aesutils.Encrypt(w.aesKey, b)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return w.ResponseWriter.Write(encrypted)
 }
 
 func protectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
@@ -80,8 +96,13 @@ func protectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 		}
 
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(decodedBody))
-		c.Next()
 
-		// TODO: encrypt response too
+		blw := encryptorBodyWriter{
+			ResponseWriter: c.Writer,
+			aesKey:         aesSessionTicketKey,
+		}
+
+		c.Writer = blw
+		c.Next()
 	}
 }
