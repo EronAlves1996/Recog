@@ -8,12 +8,13 @@ Recog is a service designed to experiment with and demonstrate various security 
 
 ## Features
 
-- Calculate SHA256 hash of uploaded files and text messages
+- Calculate SHA256 hash of uploaded files and text messages (both public and encrypted endpoints)
 - Sign and verify text messages with an RSA key pair
 - Perform an ECDH key exchange for secure session establishment
 - Session ticket management for efficient session resumption
 - X.509 certificate validation with OCSP revocation checking, signature algorithm verification, and key size validation
 - **Rate limiting** using token bucket algorithm for API endpoints
+- **Request/response encryption** for secure endpoints using session-based AES-GCM encryption
 - Structured logging with Zap
 - Input validation with custom validation rules
 
@@ -36,42 +37,19 @@ Recog is a service designed to experiment with and demonstrate various security 
 
 2. Configure the environment:
 
-   The application requires an RSA private key for signatures, an EC private key for the key exchange, and an AES key for session tickets. You can generate them using OpenSSL:
-
    ```bash
-   # Generate the RSA private key
+   # Generate the required keys
    openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
-
-   # Generate the EC P256 private key
    openssl ecparam -name prime256v1 -genkey -noout -out ec_private_key.pem
-
-   # Generate a 256-bit AES key for session tickets
    openssl rand -base64 32 > aes_key.txt
-   ```
 
-   Next, create a `.env` file in the root of the project and add the base64 encoded content of your keys:
-
-   ```bash
-   # On macOS or Linux
+   # Create .env file
    echo "RSA_PRIVATE_KEY=\"$(cat private_key.pem | base64)\"" > .env
    echo "EC_P256_PRIVATE_KEY=\"$(cat ec_private_key.pem | base64)\"" >> .env
    echo "AES_SESSIONTICKETS_KEY=\"$(cat aes_key.txt)\"" >> .env
-
-   # Add Redis configuration
    echo "REDIS_URL=\"localhost:6379\"" >> .env
    echo "REDIS_DB=\"0\"" >> .env
    echo "REDIS_PASSWORD=\"\"" >> .env
-   ```
-
-   Your `.env` file should look like this (with much longer values):
-
-   ```
-   RSA_PRIVATE_KEY="MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC..."
-   EC_P256_PRIVATE_KEY="MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg..."
-   AES_SESSIONTICKETS_KEY="your_base64_encoded_aes_key_here"
-   REDIS_URL="localhost:6379"
-   REDIS_DB="0"
-   REDIS_PASSWORD=""
    ```
 
 3. Start Redis:
@@ -79,9 +57,6 @@ Recog is a service designed to experiment with and demonstrate various security 
    ```bash
    # Using Docker (recommended)
    docker-compose up -d
-
-   # Or using a local Redis installation
-   redis-server
    ```
 
 4. Run the application:
@@ -94,395 +69,176 @@ The service will start on `http://localhost:8080`.
 
 ## Usage
 
-You can use a tool like `curl` to interact with the API, or run the provided handshake script for a complete demonstration.
+### Basic Endpoints
 
-### 1. Hash a File
+#### 1. Hash a File
 
-1. Create a sample file to hash:
+```bash
+echo "hello world" > example.txt
+curl -X POST -F "file=@example.txt" http://localhost:8080/file/hash
+```
 
-   ```bash
-   echo "hello world" > example.txt
-   ```
+#### 2. Hash a Message (Public)
 
-2. Send a `POST` request to the `/file/hash` endpoint:
+**Note: This endpoint is rate-limited (50 requests per 10-minute window).**
 
-   ```bash
-   curl -X POST -F "file=@example.txt" http://localhost:8080/file/hash
-   ```
+```bash
+curl -X POST -H "Content-Type: application/json" \
+-d '{"message": "the quick brown fox jumps over the lazy dog"}' \
+http://localhost:8080/message/hash
+```
 
-3. You will receive a JSON response with the SHA256 hash:
-   ```json
-   {
-     "hash": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-   }
-   ```
+#### 3. Sign a Message
 
-### 2. Hash a Message
+```bash
+curl -X POST -H "Content-Type: application/json" \
+-d '{"message": "test message"}' \
+http://localhost:8080/sign
+```
 
-**Note: This endpoint is rate-limited (50 requests per 10-minute window). Excessive requests will receive a 429 Too Many Requests response.**
+#### 4. Verify a Signature
 
-1. Send a `POST` request with a JSON body to the `/message/hash` endpoint:
+```bash
+curl -X POST -H "Content-Type: application/json" \
+-d '{"message": "test message", "signature": "base64-signature-here"}' \
+http://localhost:8080/verify
+```
 
-   ```bash
-   curl -X POST -H "Content-Type: application/json" \
-   -d '{"message": "the quick brown fox jumps over the lazy dog"}' \
-   http://localhost:8080/message/hash
-   ```
+### Secure Endpoints
 
-2. You will receive a JSON response with the SHA256 hash:
+Secure endpoints require a session ticket obtained through ECDH key exchange. Requests and responses are encrypted using AES-GCM with session-specific keys.
 
-   ```json
-   {
-     "hash": "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"
-   }
-   ```
-
-   **Validation Rules:**
-
-   - Message cannot be empty or contain only whitespace
-   - Maximum length: 100 characters
-
-### 3. Sign a Message
-
-1. Send a `POST` request with a JSON body to the `/sign` endpoint:
-
-   ```bash
-   curl -X POST -H "Content-Type: application/json" \
-   -d '{"message": "the quick brown fox jumps over the lazy dog"}' \
-   http://localhost:8080/sign
-   ```
-
-2. You will receive a JSON response with the base64 encoded signature:
-   ```json
-   {
-     "signature": "FqE+k...[long signature string]...="
-   }
-   ```
-
-### 4. Verify a Signature
-
-1. Use the `/verify` endpoint with the original message and the signature you received.
-
-   ```bash
-   curl -X POST -H "Content-Type: application/json" \
-   -d '{"message": "the quick brown fox jumps over the lazy dog", "signature": "FqE+k...="}' \
-   http://localhost:8080/verify
-   ```
-
-2. The response will indicate if the signature is valid:
-   ```json
-   {
-     "valid": true
-   }
-   ```
-
-### 5. Perform an ECDH Key Exchange with Session Tickets and Certificate Validation
-
-This flow demonstrates how to establish a shared secret between a client and the server using an ECDH scheme, resume the session using a session ticket, and validate an X.509 certificate. **Note:** This process is best performed by a programmatic client rather than manually with `curl`.
-
-For a complete demonstration, run the provided script:
+For a complete demonstration of secure endpoints including key exchange, session management, and certificate validation:
 
 ```bash
 go run cmd/scripts/handshake/main.go
 ```
 
-This script will:
+This script demonstrates:
 
-1. Initiate an ECDH key exchange
-2. Verify the server's signature
-3. Complete the key exchange
-4. Retrieve a session ticket
-5. Resume the session using the ticket
-6. Validate a certificate chain against the trusted root CA
+1. ECDH key exchange
+2. Session ticket retrieval
+3. Certificate validation with encryption
+4. Encrypted request/response flow
+
+### New: Encrypted Message Hashing
+
+After establishing a session via ECDH exchange, you can use the encrypted endpoint:
+
+```bash
+# Requires a valid session ticket in X-Session-Ticket header
+curl -X POST http://localhost:8080/message/hash/secure \
+  -H "X-Session-Ticket: [base64-encoded-session-ticket]" \
+  -H "Content-Type: application/json" \
+  --data-binary [encrypted-request-body]
+```
+
+**Note:** Both request and response bodies are encrypted using the session's shared secret.
 
 ## API Reference
 
-### POST /file/hash
+### Public Endpoints
 
-Calculates the SHA256 hash of a provided file.
+#### POST /file/hash
 
-**Request:**
+Calculates SHA256 hash of uploaded file.
 
-- **Method:** `POST`
-- **URL:** `/file/hash`
-- **Headers:** `Content-Type: multipart/form-data`
-- **Body:** Form field named `file` containing the file to be hashed.
+#### POST /message/hash
 
-**Success Response (200 OK):**
+Calculates SHA256 hash of text message (rate-limited).
 
-- **Content-Type:** `application/json`
-- **Body:** A JSON object with a `hash` key.
+#### POST /sign
 
-  ```json
-  {
-    "hash": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-  }
-  ```
+Signs message with RSA private key.
 
-### POST /message/hash
+#### POST /verify
 
-Calculates the SHA256 hash of a text message.
+Verifies digital signature.
 
-**Note: This endpoint is rate-limited. Excessive requests will receive a 429 response.**
+### Secure Endpoints (Require Session)
 
-**Request:**
+#### POST /exchange/initiate
 
-- **Method:** `POST`
-- **URL:** `/message/hash`
-- **Headers:** `Content-Type: application/json`
-- **Body:** A JSON object with a `message` key (1-100 characters, cannot be empty or whitespace only).
+Initiates ECDH key exchange.
 
-  ```json
-  {
-    "message": "text to hash"
-  }
-  ```
+#### POST /exchange/complete
 
-**Success Response (200 OK):**
+Completes ECDH key exchange, returns session ID.
 
-- **Content-Type:** `application/json`
-- **Body:** A JSON object with a `hash` key.
+#### GET /session/ticket/:id
 
-  ```json
-  {
-    "hash": "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
-  }
-  ```
+Retrieves session ticket.
 
-**Error Responses:**
+#### POST /session/resume
 
-- `400 Bad Request`: Invalid input (empty, too long, or whitespace only)
-- `429 Too Many Requests`: Rate limit exceeded
+Resumes session with ticket.
 
-### POST /sign
+#### POST /certificate/validate
 
-Signs a text message using the configured RSA private key.
+Validates X.509 certificate chain with encryption.
+
+#### POST /message/hash/secure
+
+**New**: Encrypted endpoint for message hashing.
 
 **Request:**
 
-- **Method:** `POST`
-- **URL:** `/sign`
-- **Headers:** `Content-Type: application/json`
-- **Body:** A JSON object with a `message` key.
+- Headers: `X-Session-Ticket: [base64-ticket]`, `Content-Type: application/json`
+- Body: Encrypted JSON `{"message": "text to hash"}`
 
-  ```json
-  {
-    "message": "a message to sign"
-  }
-  ```
+**Response:**
 
-**Success Response (200 OK):**
+- Content-Type: `application/octet-stream`
+- Body: Encrypted JSON `{"hash": "sha256-hash"}`
 
-- **Content-Type:** `application/json`
-- **Body:** A JSON object with a `signature` key.
+## Security Architecture
 
-  ```json
-  {
-    "signature": "base64-encoded-signature-string"
-  }
-  ```
+### Encryption Implementation
 
-### POST /verify
+- **Session-based encryption**: Each session establishes unique AES keys via ECDH
+- **AES-GCM**: Provides both confidentiality and integrity
+- **Secure key exchange**: ECDH P-256 for forward secrecy
+- **Middleware-based**: Clean integration with existing rate limiting and validation
 
-Verifies a digital signature against a message using the configured RSA public key.
+### Validation & Protection
 
-**Request:**
-
-- **Method:** `POST`
-- **URL:** `/verify`
-- **Headers:** `Content-Type: application/json`
-- **Body:** A JSON object with `message` and `signature` keys.
-
-  ```json
-  {
-    "message": "a message to sign",
-    "signature": "base64-encoded-signature-string"
-  }
-  ```
-
-**Success Response (200 OK):**
-
-- **Content-Type:** `application/json`
-- **Body:** A JSON object with a `valid` boolean key.
-
-  ```json
-  {
-    "valid": true
-  }
-  ```
-
-### POST /exchange/initiate
-
-Initiates an ECDH key exchange by providing the server's ECDH public key, signed for authenticity.
-
-**Request:**
-
-- **Method:** `POST`
-- **URL:** `/exchange/initiate`
-- **Body:** Empty
-
-**Success Response (200 OK):**
-
-- **Content-Type:** `application/json`
-- **Body:** A JSON object with `payload` and `signature` keys.
-
-  ```json
-  {
-    "payload": {
-      "curve": "P-256",
-      "key": "base64-encoded-ecdh-public-key"
-    },
-    "signature": "base64-encoded-signature-of-payload"
-  }
-  ```
-
-### POST /exchange/complete
-
-Completes the ECDH key exchange by receiving the client's public key and returning a proof of the derived shared secret.
-
-**Request:**
-
-- **Method:** `POST`
-- **URL:** `/exchange/complete`
-- **Headers:** `Content-Type: application/json`
-- **Body:** A JSON object with the `clientPublicKey` key.
-
-  ```json
-  {
-    "clientPublicKey": "base64-encoded-client-ecdh-public-key"
-  }
-  ```
-
-**Success Response (200 OK):**
-
-- **Content-Type:** `application/json`
-- **Body:** A JSON object with a `message` key containing an encrypted payload and a `sessionId` key.
-
-  ```json
-  {
-    "message": "base64-encoded-aes-gcm-encrypted-message",
-    "sessionId": "uuid-session-id"
-  }
-  ```
-
-### GET /session/ticket/:id
-
-Retrieves a session ticket for the given session ID.
-
-**Request:**
-
-- **Method:** `GET`
-- **URL:** `/session/ticket/:id`
-- **Path Parameters:** `id` - The session ID
-
-**Success Response (200 OK):**
-
-- **Content-Type:** `application/json`
-- **Body:** A JSON object with a `ticket` key.
-
-  ```json
-  {
-    "ticket": "base64-encoded-session-ticket"
-  }
-  ```
-
-### POST /session/resume
-
-Resumes a session using a session ticket.
-
-**Request:**
-
-- **Method:** `POST`
-- **URL:** `/session/resume`
-- **Headers:** `Content-Type: application/json`
-- **Body:** A JSON object with a `sessionTicket` key.
-
-  ```json
-  {
-    "sessionTicket": "base64-encoded-session-ticket"
-  }
-  ```
-
-**Success Response (200 OK):**
-
-- **Content-Type:** `application/json`
-- **Body:** Empty
-
-### POST /certificate/validate
-
-Validates an X.509 certificate chain against a trusted root CA. This endpoint requires a valid session ticket and encrypts the request/response using the shared secret from the ECDH exchange.
-
-The validation process includes:
-
-- Certificate chain verification against the trusted root CA
-- OCSP (Online Certificate Status Protocol) revocation checking for each certificate in the chain
-- Signature algorithm verification (accepts only SHA256WithRSA, SHA384WithRSA, SHA512WithRSA)
-- RSA key size validation (minimum 2048 bits)
-
-**Request:**
-
-- **Method:** `POST`
-- **URL:** `/certificate/validate`
-- **Headers:**
-  - `Content-Type: application/json`
-  - `X-Session-Ticket: [base64-encoded-session-ticket]`
-- **Body:** An encrypted JSON object with a `certificate` key containing a base64-encoded certificate chain.
-
-**Success Response (200 OK):**
-
-- **Content-Type:** `application/json`
-- **Body:** An encrypted JSON object with a `valid` boolean key.
-
-  ```json
-  {
-    "valid": true
-  }
-  ```
-
-**Error Responses:**
-
-- `400 Bad Request`: Missing `Content-Type` header or invalid request body.
-- `401 Unauthorized`: No session ticket found or invalid session.
-- `403 Forbidden`: Session expired.
-- `415 Unsupported Media Type`: Incorrect `Content-Type` for `/file/hash`.
-- `429 Too Many Requests`: Rate limit exceeded.
-- `500 Internal Server Error`: Server-side issues during processing.
+- Input validation with custom rules
+- Rate limiting with Redis persistence
+- Certificate validation with OCSP revocation checking
+- Session expiration and ticket encryption
 
 ## Roadmap
 
-Future planned features and improvements include:
+### High Priority
 
-- **Rate Limiting Enhancements**
-  - Configurable rate limits via environment variables
-  - Redis atomic operations to replace global mutex
-  - Per-endpoint rate limiting configurations
-- **Certificate Validation**
-  - Certificate hostname validation
-  - CRL (Certificate Revocation List) support as a fallback to OCSP
-  - Support for ECDSA and other key types
-  - Certificate chain depth validation
-  - Support for multiple trusted root CAs
-  - Certificate transparency logging
-- **Key Management**
-  - Key Derivation Function (HKDF) for secure key generation
-  - Ephemeral ECDH key exchange for forward secrecy
-  - Key rotation mechanisms for session tickets
-- **General Security**
-  - JWT generation and validation
-  - CORS configuration for cross-origin requests
-  - Support for multiple elliptic curves (e.g., X25519)
-  - Enhanced session management for key exchanges
+- **Replay attack protection** via nonce/timestamp in encrypted payloads
+- **Key derivation with HKDF** for stronger key generation from ECDH shared secrets
+- **Key rotation mechanisms** for long-lived sessions
 
-## Architecture Improvements Implemented
+### Medium Priority
 
-- **Custom validation middleware** with reusable validation rules
-- **Shared hash service** for consistent hashing logic across endpoints
-- **Centralized error handling** with standardized error responses
-- **Separation of concerns** through dedicated packages for routing, business logic, and utilities
-- **Rate limiting middleware** with token bucket algorithm and Redis persistence
+- **Certificate transparency logging** support
+- **Multiple elliptic curve support** (X25519, P-384)
+- **JWT generation and validation** endpoints
+
+### Future Considerations
+
+- **Chunked encryption** for large file support
+- **Certificate hostname validation**
+- **CRL support** as OCSP fallback
+- **Enhanced session management** with refresh tokens
 
 ## Contributing
 
-Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are greatly appreciated.
+Contributions are welcome! Please:
 
-Feel free to open an issue for suggestions or submit a pull request.
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Submit a pull request
+
+For security-related changes, please include a threat model analysis.
+
+```
+
+```

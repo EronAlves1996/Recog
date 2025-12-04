@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/EronAlves1996/Recog/internal/app/aesutils"
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
 )
 
@@ -48,25 +49,6 @@ type CertificateRequest struct {
 }
 
 var logger = log.Default()
-
-func encrypt(secret []byte, plainText []byte) ([]byte, error) {
-	block, err := aes.NewCipher(secret)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate aes cipher: %w", err)
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("unable to generate gcm: %w", err)
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("failed to initialize the intialization vector: %w", err)
-	}
-
-	return gcm.Seal(nonce, nonce, plainText, nil), nil
-}
 
 func main() {
 	logger.Println("initiating exchange")
@@ -236,7 +218,7 @@ func main() {
 		log.Fatal(fmt.Errorf("unable to encode certificate request: %w", err))
 	}
 
-	encryptedBytes, err := encrypt(sharedSecret, certificateRequestBuffer.Bytes())
+	encryptedBytes, err := aesutils.Encrypt(sharedSecret, certificateRequestBuffer.Bytes())
 	if err != nil {
 		log.Fatal(fmt.Errorf("unable to encrypt: %w", err))
 	}
@@ -258,8 +240,18 @@ func main() {
 	}
 	defer certificateResponse.Body.Close()
 
+	var certificateResponseBytes bytes.Buffer
+	if _, err := io.Copy(&certificateResponseBytes, certificateResponse.Body); err != nil {
+		log.Fatal(fmt.Errorf("unable to extract bytes: %w", err))
+	}
+
+	decryptedCertificateResponse, err := aesutils.Decrypt(sharedSecret, certificateResponseBytes.Bytes())
+	if err != nil {
+		log.Fatal(fmt.Errorf("unable to decrypt response: %w", err))
+	}
+
 	var certificateResponseBody VerifyPayloadReturn
-	if err := json.NewDecoder(certificateResponse.Body).Decode(&certificateResponseBody); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(decryptedCertificateResponse)).Decode(&certificateResponseBody); err != nil {
 		log.Fatal(fmt.Errorf("unable to decode response: %w", err))
 	}
 

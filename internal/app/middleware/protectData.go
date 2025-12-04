@@ -1,42 +1,35 @@
-package app
+package middleware
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
+	"github.com/EronAlves1996/Recog/internal/app/aesutils"
 	"github.com/EronAlves1996/Recog/internal/app/ticket"
 	"github.com/gin-gonic/gin"
 )
 
-func decrypt(secret []byte, ciphertext []byte) ([]byte, error) {
-	block, err := aes.NewCipher(secret)
-	if err != nil {
-		log.Fatal(fmt.Errorf("unable to make aes cipher: %w", err))
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		log.Fatal(fmt.Errorf("unable to make gcm: %w", err))
-	}
-
-	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		log.Fatal(fmt.Errorf("ciphertext too short"))
-	}
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-
-	return gcm.Open(nil, nonce, ciphertext, nil)
+type encryptorBodyWriter struct {
+	gin.ResponseWriter
+	aesKey []byte
 }
 
-func decryptBodyMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
+func (w encryptorBodyWriter) Write(b []byte) (int, error) {
+	encrypted, err := aesutils.Encrypt(w.aesKey, b)
+
+	if err != nil {
+		return 0, err
+	}
+
+	w.ResponseWriter.Header().Set("Content-Type", "application/octet-stream")
+	return w.ResponseWriter.Write(encrypted)
+}
+
+func ProtectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionTicket := c.Request.Header.Get("X-Session-Ticket")
 		if sessionTicket == "" {
@@ -50,7 +43,7 @@ func decryptBodyMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 			return
 		}
 
-		decrypted, err := decrypt(aesSessionTicketKey, decodedEncryptedSessionTicket)
+		decrypted, err := aesutils.Decrypt(aesSessionTicketKey, decodedEncryptedSessionTicket)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -74,14 +67,20 @@ func decryptBodyMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 			return
 		}
 
-		decodedBody, err := decrypt(ss.Secret, body)
+		decodedBody, err := aesutils.Decrypt(ss.Secret, body)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
+			return
 		}
 
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(decodedBody))
-		c.Next()
 
-		// TODO: encrypt response too
+		blw := encryptorBodyWriter{
+			ResponseWriter: c.Writer,
+			aesKey:         ss.Secret,
+		}
+
+		c.Writer = blw
+		c.Next()
 	}
 }
