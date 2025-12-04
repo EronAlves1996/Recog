@@ -67,7 +67,9 @@ func (b *Bucket) FillOne() bool {
 	return true
 }
 
-func RateLimiter(logger *zap.SugaredLogger, redisClient *redis.Client) gin.HandlerFunc {
+func RateLimiter(logger *zap.SugaredLogger,
+	auditLogger *zap.SugaredLogger,
+	redisClient *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		lock.Lock()
 		ip := c.ClientIP()
@@ -109,6 +111,12 @@ func RateLimiter(logger *zap.SugaredLogger, redisClient *redis.Client) gin.Handl
 				}
 			} else {
 				c.AbortWithStatus(http.StatusTooManyRequests)
+				auditLogger.With(
+					"client_ip", ip,
+					"endpoint", c.Request.RequestURI,
+					"request_count", bucket.Tickets,
+					"limit", bucketSize,
+				).Warn("Request rate-limited")
 			}
 		}
 

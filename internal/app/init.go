@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func createRedisClient(config *Config) *redis.Client {
@@ -53,6 +54,25 @@ func Run() {
 
 	router := gin.Default()
 	logger, err := zap.NewProduction()
+
+	cfg := zap.Config{
+		Level:            zap.NewAtomicLevelAt(zap.InfoLevel),
+		Encoding:         "json",
+		OutputPaths:      []string{"stdout", "rate.log"},
+		ErrorOutputPaths: []string{"rate-err.log"},
+		EncoderConfig: zapcore.EncoderConfig{
+			MessageKey:   "message",
+			LevelKey:     "level",
+			TimeKey:      "timestamp",
+			EncodeTime:   zapcore.ISO8601TimeEncoder,
+			EncodeLevel:  zapcore.LowercaseLevelEncoder,
+			CallerKey:    "caller",
+			EncodeCaller: zapcore.ShortCallerEncoder,
+		},
+	}
+
+	auditLogger := zap.Must(cfg.Build())
+
 	if err != nil {
 		log.Fatal(fmt.Errorf("unable to create logger: %w", err))
 	}
@@ -66,7 +86,7 @@ func Run() {
 	retrieveSessionTicketAction := session.NewRetrieveTicketAction(*redisClient)
 	resumeSessionAction := session.NewResumeSessionAction(aesSessionTicketKey)
 
-	message.RegisterRoutes(router, l, redisClient, aesSessionTicketKey)
+	message.RegisterRoutes(router, l, auditLogger.Sugar(), redisClient, aesSessionTicketKey)
 	registerRoutes(ApplicationContext{
 		logger:                      l,
 		rsaPair:                     rsaPair,
