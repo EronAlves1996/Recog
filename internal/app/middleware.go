@@ -75,7 +75,7 @@ func protectDataMiddleware(aesSessionTicketKey []byte) gin.HandlerFunc {
 
 		blw := encryptorBodyWriter{
 			ResponseWriter: c.Writer,
-			aesKey:         aesSessionTicketKey,
+			aesKey:         ss.Secret,
 		}
 
 		c.Writer = blw
