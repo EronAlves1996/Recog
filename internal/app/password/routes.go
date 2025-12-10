@@ -37,6 +37,13 @@ func verifyPassword(l *zap.SugaredLogger) gin.HandlerFunc {
 		password := body.Password
 		hashedPassword := body.HashedPassword
 
+		if len([]byte(password)) > 72 {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"error": "Password exceeds maximum byte length (72 bytes)",
+			})
+			return
+		}
+
 		match := false
 
 		if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err == nil {
@@ -58,6 +65,13 @@ func hashPassword(l *zap.SugaredLogger, bcryptCost int) gin.HandlerFunc {
 		}
 
 		password := body.Password
+
+		if len([]byte(password)) > 72 {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+				"error": "Password exceeds maximum byte length (72 bytes)",
+			})
+			return
+		}
 
 		// Already have built in salts https://stackoverflow.com/q/6832445
 		cipherText, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
