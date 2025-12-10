@@ -27,8 +27,9 @@ func RegisterRoutes(r gin.IRouter, l *zap.SugaredLogger, bcryptCost int) {
 }
 
 func verifyPassword(l *zap.SugaredLogger) gin.HandlerFunc {
+	return func(c *gin.Context) {
 
-	panic("unimplemented")
+	}
 }
 
 func hashPassword(l *zap.SugaredLogger, bcryptCost int) gin.HandlerFunc {
@@ -40,6 +41,8 @@ func hashPassword(l *zap.SugaredLogger, bcryptCost int) gin.HandlerFunc {
 		}
 
 		password := body.Password
+
+		// Already have built in salts https://stackoverflow.com/q/6832445
 		cipherText, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 		if err != nil {
 			l.Errorw("failed to encrypt password", zap.Error(err))
