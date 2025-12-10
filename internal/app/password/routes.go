@@ -11,7 +11,7 @@ import (
 )
 
 type HashPasswordBody struct {
-	Password string `json:"password" binding:"required,max=70"`
+	Password string `json:"password" binding:"required,min=8,max=72"`
 }
 
 type VerifyPasswordBody struct {
@@ -63,7 +63,9 @@ func hashPassword(l *zap.SugaredLogger, bcryptCost int) gin.HandlerFunc {
 		cipherText, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 		if err != nil {
 			l.Errorw("failed to encrypt password", zap.Error(err))
-			c.AbortWithError(http.StatusInternalServerError, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to process password",
+			})
 			return
 		}
 
