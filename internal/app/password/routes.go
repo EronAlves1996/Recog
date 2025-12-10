@@ -28,7 +28,24 @@ func RegisterRoutes(r gin.IRouter, l *zap.SugaredLogger, bcryptCost int) {
 
 func verifyPassword(l *zap.SugaredLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		body, ok := c.MustGet(gin.BindKey).(*VerifyPasswordBody)
+		if !ok {
+			httputils.AbortFailedToDeserialize(l, c)
+			return
+		}
 
+		password := body.Password
+		hashedPassword := body.HashedPassword
+
+		match := false
+
+		if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err == nil {
+			match = true
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"match": match,
+		})
 	}
 }
 
