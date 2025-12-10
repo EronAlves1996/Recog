@@ -8,6 +8,7 @@ import (
 	"github.com/EronAlves1996/Recog/internal/app/certificate"
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
 	"github.com/EronAlves1996/Recog/internal/app/message"
+	"github.com/EronAlves1996/Recog/internal/app/password"
 	"github.com/EronAlves1996/Recog/internal/app/session"
 	"github.com/EronAlves1996/Recog/internal/app/signature"
 	"github.com/EronAlves1996/Recog/internal/pkg/cryptoutils"
@@ -87,6 +88,8 @@ func Run() {
 	resumeSessionAction := session.NewResumeSessionAction(aesSessionTicketKey)
 
 	message.RegisterRoutes(router, l, auditLogger.Sugar(), redisClient, aesSessionTicketKey)
+	password.RegisterRoutes(router)
+
 	registerRoutes(ApplicationContext{
 		logger:                      l,
 		rsaPair:                     rsaPair,
