@@ -8,6 +8,8 @@ import (
 	"github.com/EronAlves1996/Recog/internal/app/certificate"
 	"github.com/EronAlves1996/Recog/internal/app/exchange"
 	"github.com/EronAlves1996/Recog/internal/app/message"
+	"github.com/EronAlves1996/Recog/internal/app/middleware"
+	"github.com/EronAlves1996/Recog/internal/app/password"
 	"github.com/EronAlves1996/Recog/internal/app/session"
 	"github.com/EronAlves1996/Recog/internal/app/signature"
 	"github.com/EronAlves1996/Recog/internal/pkg/cryptoutils"
@@ -86,7 +88,12 @@ func Run() {
 	retrieveSessionTicketAction := session.NewRetrieveTicketAction(*redisClient)
 	resumeSessionAction := session.NewResumeSessionAction(aesSessionTicketKey)
 
-	message.RegisterRoutes(router, l, auditLogger.Sugar(), redisClient, aesSessionTicketKey)
+	passwordMiddlewareRouterGroup := router.Group("")
+	passwordMiddlewareRouterGroup.Use(middleware.RateLimiter(l, auditLogger.Sugar(), redisClient))
+
+	message.RegisterRoutes(passwordMiddlewareRouterGroup, l, auditLogger.Sugar(), redisClient, aesSessionTicketKey)
+	password.RegisterRoutes(passwordMiddlewareRouterGroup, l, config.BcryptCost)
+
 	registerRoutes(ApplicationContext{
 		logger:                      l,
 		rsaPair:                     rsaPair,

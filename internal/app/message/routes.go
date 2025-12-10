@@ -19,13 +19,13 @@ type HashBody struct {
 	Message string `json:"message" binding:"required,min=1,max=100,notblank"`
 }
 
-func RegisterRoutes(router *gin.Engine, logger, auditLogger *zap.SugaredLogger,
+func RegisterRoutes(router gin.IRouter, logger, auditLogger *zap.SugaredLogger,
 	redisClient *redis.Client, aesSessionTicketKey []byte) {
 	g := router.Group("/message")
 
-	g.POST("/hash", middleware.RateLimiter(logger, auditLogger, redisClient),
+	g.POST("/hash",
 		middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
-	g.POST("/hash/secure", middleware.RateLimiter(logger, auditLogger, redisClient),
+	g.POST("/hash/secure",
 		middleware.ProtectDataMiddleware(aesSessionTicketKey),
 		middleware.ValidateMiddleware(HashBody{}), hashBody(logger))
 }
