@@ -20,6 +20,7 @@ type Config struct {
 	EcP256PrivateKey    string
 	AesSessionTicketKey string
 	RedisConfig         RedisConfig
+	BcryptCost          int
 }
 
 func LoadConfig() (*Config, error) {
@@ -36,10 +37,16 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("error while recovering redis config: %w", err)
 	}
 
+	bcryptCost, err := strconv.Atoi(os.Getenv("BCRYPT_COST"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to recover bcrypt cost: %w", err)
+	}
+
 	c := Config{
 		RawRsaPrivateKey:    os.Getenv("RSA_PRIVATE_KEY"),
 		EcP256PrivateKey:    os.Getenv("EC_P256_PRIVATE_KEY"),
 		AesSessionTicketKey: os.Getenv("AES_SESSIONTICKETS_KEY"),
+		BcryptCost:          bcryptCost,
 		RedisConfig: RedisConfig{
 			RedisUrl:      os.Getenv("REDIS_URL"),
 			RedisDb:       redisDb,
