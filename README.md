@@ -10,6 +10,7 @@ Recog is a service designed to experiment with and demonstrate various security 
 
 - Calculate SHA256 hash of uploaded files and text messages
 - Sign and verify text messages with RSA key pairs
+- **Password hashing** with bcrypt and secure verification
 - Perform ECDH key exchange for secure session establishment
 - Session ticket management for efficient session resumption
 - X.509 certificate validation with OCSP revocation checking
@@ -49,6 +50,7 @@ Recog is a service designed to experiment with and demonstrate various security 
    echo "EC_P256_PRIVATE_KEY=\"$(cat ec_private_key.pem | base64)\"" >> .env
    echo "AES_SESSIONTICKETS_KEY=\"$(cat aes_key.txt)\"" >> .env
    echo "REDIS_URL=\"localhost:6379\"" >> .env
+   echo "BCRYPT_COST=10" >> .env  # Adjust cost factor as needed (4-31)
    ```
 
 3. Start Redis:
@@ -76,7 +78,7 @@ echo "hello world" > example.txt
 curl -X POST -F "file=@example.txt" http://localhost:8080/file/hash
 ```
 
-#### 2. Hash a Message (Public)
+#### 2. Hash a Message
 
 **Note: Rate-limited to 50 requests per 10-minute window.**
 
@@ -86,7 +88,25 @@ curl -X POST -H "Content-Type: application/json" \
 http://localhost:8080/message/hash
 ```
 
-#### 3. Sign a Message
+#### 3. Hash a Password
+
+**Note: Rate-limited. Password length limited to 72 bytes for bcrypt compatibility.**
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+-d '{"password": "MySecurePass123!"}' \
+http://localhost:8080/password/hash
+```
+
+#### 4. Verify a Password
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+-d '{"password": "MySecurePass123!", "hashedPassword": "$2a$10$..."}' \
+http://localhost:8080/password/verify
+```
+
+#### 5. Sign a Message
 
 ```bash
 curl -X POST -H "Content-Type: application/json" \
@@ -94,7 +114,7 @@ curl -X POST -H "Content-Type: application/json" \
 http://localhost:8080/sign
 ```
 
-#### 4. Verify a Signature
+#### 6. Verify a Signature
 
 ```bash
 curl -X POST -H "Content-Type: application/json" \
@@ -130,6 +150,14 @@ Calculates SHA256 hash of uploaded file.
 #### POST /message/hash
 
 Calculates SHA256 hash of text message (rate-limited).
+
+#### POST /password/hash
+
+Hashes password with bcrypt. Password must be 8-72 characters. Cost factor configurable via `BCRYPT_COST` environment variable.
+
+#### POST /password/verify
+
+Verifies password against bcrypt hash. Returns match status.
 
 #### POST /sign
 
@@ -173,6 +201,12 @@ Encrypted endpoint for message hashing.
 - **AES-GCM**: Provides both confidentiality and integrity
 - **Secure key exchange**: ECDH P-256 for forward secrecy
 
+### Password Security
+
+- **bcrypt hashing**: Industry-standard password hashing with built-in salt
+- **Byte-length validation**: Ensures passwords don't exceed bcrypt's 72-byte limit
+- **Configurable cost**: Adjustable work factor via `BCRYPT_COST` environment variable
+
 ### Validation & Protection
 
 - Input validation with custom rules
@@ -191,12 +225,14 @@ Encrypted endpoint for message hashing.
 
 ### Medium Priority
 
+- **Enhanced password validation** with complexity requirements and custom validator rules
 - **Certificate transparency logging** support
 - **Multiple elliptic curve support** (X25519, P-384)
 - **JWT generation and validation** endpoints
 
 ### Future Considerations
 
+- **Password audit logging** for security monitoring (without exposing sensitive data)
 - **Enhanced audit logging** with request ID correlation and log aggregation
 - **Certificate hostname validation**
 - **CRL support** as OCSP fallback
@@ -212,3 +248,7 @@ Contributions are welcome! Please:
 4. Submit a pull request
 
 For security-related changes, please include a threat model analysis.
+
+---
+
+**Note on Security**: This is an educational project for experimenting with security concepts. For production use, conduct thorough security reviews and consider additional protections like WAF, DDoS mitigation, and regular penetration testing.
