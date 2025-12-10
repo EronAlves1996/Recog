@@ -111,12 +111,16 @@ func RateLimiter(logger *zap.SugaredLogger,
 				}
 			} else {
 				c.AbortWithStatus(http.StatusTooManyRequests)
+				userAgent := c.Request.UserAgent()
+				if userAgent == "" {
+					userAgent = "unknown"
+				}
 				auditLogger.With(
 					"client_ip", ip,
 					"endpoint", c.Request.RequestURI,
 					"request_count", bucket.Tickets,
 					"limit", bucketSize,
-					"user_agent", c.Request.UserAgent(),
+					"user_agent", userAgent,
 				).Warn("Request rate-limited")
 			}
 		}
