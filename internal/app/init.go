@@ -88,11 +88,10 @@ func Run() {
 	retrieveSessionTicketAction := session.NewRetrieveTicketAction(*redisClient)
 	resumeSessionAction := session.NewResumeSessionAction(aesSessionTicketKey)
 
-	message.RegisterRoutes(router, l, auditLogger.Sugar(), redisClient, aesSessionTicketKey)
-
 	passwordMiddlewareRouterGroup := router.Group("")
 	passwordMiddlewareRouterGroup.Use(middleware.RateLimiter(l, auditLogger.Sugar(), redisClient))
 
+	message.RegisterRoutes(passwordMiddlewareRouterGroup, l, auditLogger.Sugar(), redisClient, aesSessionTicketKey)
 	password.RegisterRoutes(passwordMiddlewareRouterGroup)
 
 	registerRoutes(ApplicationContext{
