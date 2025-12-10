@@ -15,7 +15,7 @@ Recog is a service designed to experiment with and demonstrate various security 
 - X.509 certificate validation with OCSP revocation checking
 - **Rate limiting** using token bucket algorithm for API endpoints
 - **Request/response encryption** for secure endpoints using session-based AES-GCM
-- **Audit logging** for security events including rate-limited requests
+- **Audit logging** for security events including rate-limited requests with client context (IP, endpoint, User-Agent)
 - Structured logging with Zap
 - Input validation with custom rules
 
@@ -119,19 +119,6 @@ This script demonstrates:
 - Certificate validation with encryption
 - Encrypted request/response flow
 
-### Encrypted Message Hashing
-
-After establishing a session via ECDH exchange:
-
-```bash
-curl -X POST http://localhost:8080/message/hash/secure \
-  -H "X-Session-Ticket: [ticket]" \
-  -H "Content-Type: application/json" \
-  --data-binary [encrypted-request-body]
-```
-
-**Note:** Both request and response bodies are encrypted using the session's shared secret.
-
 ## API Reference
 
 ### Public Endpoints
@@ -192,7 +179,7 @@ Encrypted endpoint for message hashing.
 - Rate limiting with Redis persistence
 - Certificate validation with OCSP revocation checking
 - Session expiration and ticket encryption
-- **Audit logging**: Security events (rate-limited requests) logged to `rate.log` for monitoring
+- **Audit logging**: Security events logged to `rate.log` with structured context including IP, endpoint, User-Agent, and request count
 
 ## Roadmap
 
@@ -210,7 +197,7 @@ Encrypted endpoint for message hashing.
 
 ### Future Considerations
 
-- **Enhanced audit logging** with log rotation and external log aggregation
+- **Enhanced audit logging** with request ID correlation and log aggregation
 - **Certificate hostname validation**
 - **CRL support** as OCSP fallback
 - **Chunked encryption** for large file support
@@ -225,7 +212,3 @@ Contributions are welcome! Please:
 4. Submit a pull request
 
 For security-related changes, please include a threat model analysis.
-
-```
-
-```
