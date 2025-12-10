@@ -19,10 +19,10 @@ type VerifyPasswordBody struct {
 	HashedPassword string `json:"hashedPassword" binding:"required"`
 }
 
-func RegisterRoutes(r gin.IRouter, l *zap.SugaredLogger) {
+func RegisterRoutes(r gin.IRouter, l *zap.SugaredLogger, bcryptCost int) {
 	rg := r.Group("password")
 
-	rg.POST("/hash", middleware.ValidateMiddleware(HashPasswordBody{}), hashPassword(l))
+	rg.POST("/hash", middleware.ValidateMiddleware(HashPasswordBody{}), hashPassword(l, bcryptCost))
 	rg.POST("/verify", middleware.ValidateMiddleware(VerifyPasswordBody{}), verifyPassword(l))
 }
 
@@ -31,7 +31,7 @@ func verifyPassword(l *zap.SugaredLogger) gin.HandlerFunc {
 	panic("unimplemented")
 }
 
-func hashPassword(l *zap.SugaredLogger) gin.HandlerFunc {
+func hashPassword(l *zap.SugaredLogger, bcryptCost int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, ok := c.MustGet(gin.BindKey).(*HashPasswordBody)
 		if !ok {
@@ -40,7 +40,7 @@ func hashPassword(l *zap.SugaredLogger) gin.HandlerFunc {
 		}
 
 		password := body.Password
-		cipherText, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+		cipherText, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 		if err != nil {
 			l.Errorw("failed to encrypt password", zap.Error(err))
 			c.AbortWithError(http.StatusInternalServerError, err)

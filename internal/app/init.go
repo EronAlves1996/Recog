@@ -92,7 +92,7 @@ func Run() {
 	passwordMiddlewareRouterGroup.Use(middleware.RateLimiter(l, auditLogger.Sugar(), redisClient))
 
 	message.RegisterRoutes(passwordMiddlewareRouterGroup, l, auditLogger.Sugar(), redisClient, aesSessionTicketKey)
-	password.RegisterRoutes(passwordMiddlewareRouterGroup, l)
+	password.RegisterRoutes(passwordMiddlewareRouterGroup, l, config.BcryptCost)
 
 	registerRoutes(ApplicationContext{
 		logger:                      l,
